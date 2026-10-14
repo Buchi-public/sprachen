@@ -20,6 +20,7 @@ let topic = state.topic || 'alle';
 let zeit = state.zeit || 'alle';
 let ab = state.ab || VOK.map(v=>v.d).sort()[0];
 let cardFront = 'es';
+let undoK = null;
 let cur = null, flipped = false, quizQ = null, wrQ = null, saQ = null;
 
 const STORE_OK = (()=>{ try{ localStorage.setItem('__t','1'); const ok = localStorage.getItem('__t')==='1'; localStorage.removeItem('__t'); return ok; }catch(e){ return false; } })();
@@ -190,18 +191,23 @@ function karten(){
       <button class="btn bad" id="no">Nicht gewusst</button>
       <button class="btn ok" id="yes">Gewusst</button>
     </div>
+    ${undoK ? `<div class="row"><button class="chip" id="undoK">↩︎ Zurück: „${esHtml(undoK.v.es)}“ wieder in Fach ${undoK.b}</button></div>` : ''}
     ${F.knownButton && flipped && (F.firstPass || p.b < 5) ? `<div class="row"><button class="chip" id="known">${F.firstPass?'✓ Kann ich – erledigt (kommt nicht mehr)':'⏩ Kann ich längst – direkt in Fach 5'}</button>${repBtn(cur)}</div>` : (flipped && F.report ? `<div class="row">${repBtn(cur)}</div>` : '')}
     <p class="legend">Fach antippen = nur dieses Fach üben (nochmal tippen = aus). Leitner-System: Gewusst → ein Fach weiter (Wiederholung nach ${INTERVALS.slice(1).join(', ')} Tagen). Nicht gewusst → zurück in Fach 1. ${DIRNAME.es} und ${DIRNAME.de} haben getrennte Fächer. ${L.legend||''}</p>
   </div>`;
   document.getElementById('card').onclick = () => { flipped=!flipped; render(); };
   document.querySelectorAll('[data-fach]').forEach(b=>b.onclick=()=>{ const [d,n]=b.dataset.fach.split(':'); const same = state.fach && state.fach.d===d && state.fach.b===+n; state.fach = same ? null : {d, b:+n}; if(state.fach && !fachList().length){ state.fach=null; } cur=null; save(); render(); });
   const fx = document.getElementById('fachX'); if(fx) fx.onclick = () => { state.fach=null; cur=null; save(); render(); };
-  document.getElementById('yes').onclick = () => { grade(cur,true,cardFront); cur=null; render(); };
-  document.getElementById('no').onclick = () => { grade(cur,false,cardFront); cur=null; render(); };
+  // Zurück: Zustand der zuletzt bewerteten Karte merken
+  const snap = () => { const q = prog(cur.id, cardFront); undoK = {v:cur, d:cardFront, b:q.b, due:q.due, x: state.x && state.x[cur.id], done: state.done||0}; };
+  document.getElementById('yes').onclick = () => { snap(); grade(cur,true,cardFront); cur=null; render(); };
+  document.getElementById('no').onclick = () => { snap(); grade(cur,false,cardFront); cur=null; render(); };
+  const ub = document.getElementById('undoK'); if(ub) ub.onclick = () => { const u = undoK; const q = prog(u.v.id, u.d); q.b = u.b; q.due = u.due;
+    if(state.x){ if(u.x) state.x[u.v.id] = u.x; else delete state.x[u.v.id]; } state.done = u.done; undoK = null; save(); cur = u.v; cardFront = u.d; flipped = false; render(); };
   const kn = document.getElementById('known');
   if(cardFront==='es' || flipped) autoSay('k'+cur.id+cardFront+flipped, cur.es);
-  if(kn && F.firstPass) kn.onclick = () => { markDone(cur); cur=null; render(); };
-  else if(kn) kn.onclick = () => { const q = prog(cur.id, cardFront); q.b = 5; q.due = today() + INTERVALS[5]; state.done = (state.done||0)+1; save(); cur=null; render(); };
+  if(kn && F.firstPass) kn.onclick = () => { snap(); markDone(cur); cur=null; render(); };
+  else if(kn) kn.onclick = () => { snap(); const q = prog(cur.id, cardFront); q.b = 5; q.due = today() + INTERVALS[5]; state.done = (state.done||0)+1; save(); cur=null; render(); };
 }
 
 function quiz(){
