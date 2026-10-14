@@ -2,7 +2,7 @@
    Erwartet window.LANG (Einstellungen der Sprache) und window.DATA ({vokabeln, saetze}).
    Verbesserungen hier wirken in allen Sprachen; Unterschiede nur über LANG / LANG.features. */
 const L = window.LANG, DATA = window.DATA;
-const F = Object.assign({modes:['karten','quiz','schreiben','saetze','liste'], intervals:[0,1,2,4,7,14], dirDefault:'es'}, L.features||{});
+const F = Object.assign({modes:['karten','quiz','schreiben','saetze','liste'], intervals:[0,1,2,4,7,14], dirDefault:'es', knownButton:true}, L.features||{});
 const VOK = DATA.vokabeln;
 const SAETZE = DATA.saetze;
 const TOPICS = [...new Set(VOK.map(v=>v.t))];
@@ -104,11 +104,14 @@ function karten(){
       <button class="btn bad" id="no">Nicht gewusst</button>
       <button class="btn ok" id="yes">Gewusst</button>
     </div>
+    ${F.knownButton && flipped && p.b < 5 ? '<div class="row"><button class="chip" id="known">⏩ Kann ich längst – direkt in Fach 5</button></div>' : ''}
     <p class="legend">Leitner-System: Gewusst → ein Fach weiter (Wiederholung nach ${INTERVALS.slice(1).join(', ')} Tagen). Nicht gewusst → zurück in Fach 1. ${DIRNAME.es} und ${DIRNAME.de} haben getrennte Fächer. ${L.legend||''}</p>
   </div>`;
   document.getElementById('card').onclick = () => { flipped=!flipped; render(); };
   document.getElementById('yes').onclick = () => { grade(cur,true,cardFront); cur=null; render(); };
   document.getElementById('no').onclick = () => { grade(cur,false,cardFront); cur=null; render(); };
+  const kn = document.getElementById('known');
+  if(kn) kn.onclick = () => { const q = prog(cur.id, cardFront); q.b = 5; q.due = today() + INTERVALS[5]; state.done = (state.done||0)+1; save(); cur=null; render(); };
 }
 
 function quiz(){
