@@ -2,7 +2,13 @@
    Erwartet window.LANG (Einstellungen der Sprache) und window.DATA ({vokabeln, saetze}).
    Verbesserungen hier wirken in allen Sprachen; Unterschiede nur über LANG / LANG.features. */
 const L = window.LANG, DATA = window.DATA;
-const F = Object.assign({modes:['karten','quiz','schreiben','saetze','liste'], intervals:[0,1,2,4,7,14], dirDefault:'es', knownButton:true}, L.features||{});
+const F = Object.assign({modes:['karten','quiz','schreiben','saetze','liste'], intervals:[0,1,2,4,7,14], dirDefault:'es', knownButton:true,
+  tts:true,          // Sprachausgabe (eingebaute Stimmen des Geräts)
+  mic:false,         // Mikrofon-Knopf in Schreiben/Sätze (Spracherkennung des Browsers, falls vorhanden)
+  firstPass:false,   // Erstdurchgang „Neu": alle Wörter einmal sichten; „Kann ich" = erledigt (kommt nie wieder)
+  packSize:50,       // Wörter pro Paket im Erstdurchgang
+  report:false       // Knopf „Fehler melden" + Liste in den Einstellungen
+}, L.features||{});
 const VOK = DATA.vokabeln;
 const SAETZE = DATA.saetze;
 const TOPICS = [...new Set(VOK.map(v=>v.t))];
@@ -27,7 +33,10 @@ function dirsActive(){ if(view==='schreiben') return ['de']; const d = state.dir
 function isDue(v,d){ return prog(v.id,d).due <= today(); }
 const DAY = 864e5, today = () => Math.floor(Date.now()/DAY);
 function inTime(d){ if(zeit==='alle') return true; if(zeit==='neu') return Date.parse(d)/DAY >= today()-7; return d >= ab; }
-function pool(){ return VOK.filter(v=>(topic==='alle'||v.t===topic) && inTime(v.d)); }
+// Erstdurchgang: state.n = gesichtet, state.x = erledigt („Kann ich" – kommt nie wieder)
+const isDone = v => !!(state.x && state.x[v.id]);
+const isSeen = v => !!((state.n && state.n[v.id]) || isDone(v));
+function pool(){ return VOK.filter(v=>(topic==='alle'||v.t===topic) && inTime(v.d) && (!F.firstPass || (isSeen(v) && !isDone(v)))); }
 const MON=['Jän','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
 function mon(d){ return MON[+d.slice(5,7)-1]+' '+d.slice(2,4); }
 function due(){ const ds = dirsActive(); return pool().filter(v=>ds.some(d=>isDue(v,d))); }
@@ -35,11 +44,62 @@ function esHtml(es){ return es.split(' ').map(w => L.articles[w] ? `<span class=
 function fold(s){ s = s.toLowerCase(); for(const [x,y] of (L.fold||[])) s = s.split(x).join(y); return s.normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
 function norm(s){ return s.toLowerCase().replace(/\s+/g,' ').replace(/…/g,'').trim(); }
 function shuffle(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]];} return a; }
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+
+// ---------- Sprachausgabe ----------
+const TTS_LANG = L.tts || ({ES:'es-ES', DA:'da-DK'})[L.code] || '';
+const SYN = window.speechSynthesis;
+let VOICE = null;
+function pickVoice(){
+  if(!SYN || !TTS_LANG) return;
+  const n = s => s.replace('_','-').toLowerCase(), all = SYN.getVoices();
+  const exact = all.filter(v=>n(v.lang)===n(TTS_LANG)), same = all.filter(v=>n(v.lang).startsWith(n(TTS_LANG).slice(0,2)));
+  const c = exact.length ? exact : same;
+  VOICE = c.find(v=>/premium|enhanced|erweitert|verbessert/i.test(v.name)) || c.find(v=>v.localService) || c[0] || null;
+}
+if(SYN){ try{ pickVoice(); SYN.addEventListener ? SYN.addEventListener('voiceschanged', pickVoice) : (SYN.onvoiceschanged = pickVoice); }catch(e){} }
+const canSpeak = () => F.tts && !!SYN && !!TTS_LANG;
+function speak(t){
+  if(!canSpeak() || !t) return;
+  try{
+    SYN.cancel();
+    const u = new SpeechSynthesisUtterance(String(t).replace(/\([^)]*\)/g,'').replace(/\s*\/\s*/g,', ').replace(/…/g,'').trim());
+    u.lang = TTS_LANG; if(VOICE) u.voice = VOICE; u.rate = state.rate || 0.9;
+    SYN.speak(u);
+  }catch(e){}
+}
+const spk = (t, label) => canSpeak() ? `<button type="button" class="spk" data-say="${esc(t)}" aria-label="Vorlesen">🔊${label?' '+label:''}</button>` : '';
+let lastAuto = '';
+function autoSay(key, t){ if(state.auto && canSpeak() && lastAuto!==key){ lastAuto = key; setTimeout(()=>speak(t), 150); } }
+document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-say]'); if(b){ e.preventDefault(); e.stopPropagation(); speak(b.dataset.say); } }, true);
+
+// ---------- Spracheingabe ----------
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const micOk = () => F.mic && !!SR && !!TTS_LANG;
+const micBtn = id => micOk() ? `<button type="button" class="btn mic" data-mic="${id}" aria-label="Sprechen">🎤</button>` : '';
+function bindMic(after){
+  document.querySelectorAll('[data-mic]').forEach(b => b.onclick = () => {
+    const inp = document.getElementById(b.dataset.mic); if(!inp || inp.disabled) return;
+    let rec; try{ rec = new SR(); }catch(e){ return; }
+    rec.lang = TTS_LANG; rec.interimResults = false; rec.maxAlternatives = 1;
+    b.classList.add('on'); b.textContent = '● …';
+    rec.onresult = ev => { inp.value = ev.results[0][0].transcript.replace(/[.!?,;:]+$/,'').trim(); if(after) after(); };
+    rec.onerror = ev => { const m = document.querySelector('.feedback'); if(m && !m.textContent) { m.className='feedback bad'; m.textContent = ev.error==='not-allowed' ? 'Mikrofon nicht erlaubt – in den iPhone-Einstellungen freigeben oder das Tastatur-Mikrofon verwenden.' : 'Nicht verstanden – nochmal versuchen.'; } };
+    rec.onend = () => { b.classList.remove('on'); b.textContent = '🎤'; };
+    try{ rec.start(); }catch(e){ b.classList.remove('on'); b.textContent='🎤'; }
+  });
+}
+
+// ---------- Fehler melden ----------
+const repBtn = v => F.report ? `<button type="button" class="chip ${state.flag&&state.flag[v.id]?'on':''}" data-flag="${esc(v.id)}">⚑ ${state.flag&&state.flag[v.id]?'Gemeldet':'Fehler melden'}</button>` : '';
+document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-flag]'); if(b){ state.flag = state.flag||{}; const id=b.dataset.flag; if(state.flag[id]) delete state.flag[id]; else state.flag[id]=1; save(); render(); } });
+const exHtml = v => v.ex ? `<div class="ex">${v.ex}${v.exde?`<br><span class="mini" style="font-size:13px">${v.exde}</span>`:''} ${spk(v.ex)}</div>` : '';
 function pick(force){
   const ds = force ? [force] : dirsActive(), c = [];
   pool().forEach(v=>ds.forEach(d=>{ if(isDue(v,d)) c.push([v,d]); }));
   if(c.length) return c[Math.random()*c.length|0];
-  const src = pool().length ? pool() : VOK;
+  const src = pool().length ? pool() : (F.firstPass ? [] : VOK);
+  if(!src.length) return [null, ds[0]];
   return [src[Math.random()*src.length|0], ds[Math.random()*ds.length|0]];
 }
 function grade(v, ok, d){
@@ -50,7 +110,7 @@ function grade(v, ok, d){
 }
 function header(){
   const d = due().length, n = pool().length;
-  document.getElementById('stats').textContent = `${d} von ${n} fällig`;
+  document.getElementById('stats').textContent = F.firstPass ? `${d} fällig · ${VOK.filter(isSeen).length}/${VOK.length} gesichtet` : `${d} von ${n} fällig`;
 }
 function topicBar(){
   return `<div class="row" style="flex-wrap:nowrap">
@@ -83,7 +143,7 @@ function render(){
   header();
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on', b.dataset.v===view));
   const g = document.getElementById('gear'); if(g){ g.classList.toggle('on', view==='einst'); g.onclick = () => { view = view==='einst' ? (state.lastView||F.modes[0]) : (state.lastView=view, 'einst'); save(); render(); }; }
-  ({karten, quiz, schreiben, saetze, liste, einst})[view]();
+  ({karten, quiz, schreiben, saetze, liste, einst, durchgang})[view]();
   const reset = () => { cur=quizQ=wrQ=saQ=null; save(); render(); };
   document.querySelectorAll('[data-dir]').forEach(b=>b.onclick=()=>{ state.dir=b.dataset.dir; reset(); });
   const sel = document.getElementById('topic'); if(sel) sel.onchange = e => { topic=e.target.value; reset(); };
@@ -91,7 +151,18 @@ function render(){
   const ad = document.getElementById('ab'); if(ad) ad.onchange = e => { if(e.target.value){ ab=e.target.value; reset(); } };
 }
 
+function emptyGuard(){
+  if(!F.firstPass || pool().length) return false;
+  const anySeen = VOK.some(isSeen);
+  main.innerHTML = `<div class="stack">${topicBar()}<div class="card" style="min-height:160px"><div class="word" style="font-size:22px">${anySeen?'Keine Wörter zum Üben in dieser Auswahl':'Noch keine Wörter gesichtet'}</div>
+    <div class="hint">${anySeen?'Alle erledigt oder Filter zu eng.':'Starte mit dem Erstdurchgang unter „Neu".'}</div></div>
+    <div class="row"><button class="btn primary" id="goNeu">Zum Erstdurchgang</button></div></div>`;
+  document.getElementById('goNeu').onclick = () => { view='durchgang'; save(); render(); };
+  return true;
+}
+function markDone(v){ state.x = state.x||{}; state.x[v.id] = today(); state.n = state.n||{}; state.n[v.id] = 1; state.done = (state.done||0)+1; save(); }
 function karten(){
+  if(emptyGuard()) return;
   if(!cur){ [cur, cardFront] = pick(); flipped=false; }
   const p = prog(cur.id, cardFront);
   main.innerHTML = `<div class="stack">${topicBar()}${dirBar()}${boxes()}
@@ -100,21 +171,26 @@ function karten(){
       <div class="word">${(cardFront==='es') !== flipped ? esHtml(cur.es) : cur.de}</div>
       <div class="hint">${flipped ? ((cardFront==='es') ? esHtml(cur.es) : cur.de) : 'Tippen zum Umdrehen'}</div>
     </button>
+    ${(cardFront==='es' || flipped) && canSpeak() ? `<div class="row">${spk(cur.es,'Anhören')}</div>` : ''}
+    ${flipped ? exHtml(cur) : ''}
     <div class="row" id="grade" ${flipped?'':'hidden'}>
       <button class="btn bad" id="no">Nicht gewusst</button>
       <button class="btn ok" id="yes">Gewusst</button>
     </div>
-    ${F.knownButton && flipped && p.b < 5 ? '<div class="row"><button class="chip" id="known">⏩ Kann ich längst – direkt in Fach 5</button></div>' : ''}
+    ${F.knownButton && flipped && (F.firstPass || p.b < 5) ? `<div class="row"><button class="chip" id="known">${F.firstPass?'✓ Kann ich – erledigt (kommt nicht mehr)':'⏩ Kann ich längst – direkt in Fach 5'}</button>${repBtn(cur)}</div>` : (flipped && F.report ? `<div class="row">${repBtn(cur)}</div>` : '')}
     <p class="legend">Leitner-System: Gewusst → ein Fach weiter (Wiederholung nach ${INTERVALS.slice(1).join(', ')} Tagen). Nicht gewusst → zurück in Fach 1. ${DIRNAME.es} und ${DIRNAME.de} haben getrennte Fächer. ${L.legend||''}</p>
   </div>`;
   document.getElementById('card').onclick = () => { flipped=!flipped; render(); };
   document.getElementById('yes').onclick = () => { grade(cur,true,cardFront); cur=null; render(); };
   document.getElementById('no').onclick = () => { grade(cur,false,cardFront); cur=null; render(); };
   const kn = document.getElementById('known');
-  if(kn) kn.onclick = () => { const q = prog(cur.id, cardFront); q.b = 5; q.due = today() + INTERVALS[5]; state.done = (state.done||0)+1; save(); cur=null; render(); };
+  if(cardFront==='es' || flipped) autoSay('k'+cur.id+cardFront+flipped, cur.es);
+  if(kn && F.firstPass) kn.onclick = () => { markDone(cur); cur=null; render(); };
+  else if(kn) kn.onclick = () => { const q = prog(cur.id, cardFront); q.b = 5; q.due = today() + INTERVALS[5]; state.done = (state.done||0)+1; save(); cur=null; render(); };
 }
 
 function quiz(){
+  if(emptyGuard()) return;
   if(!quizQ){
     const [v, dir] = pick();
     const others = shuffle(VOK.filter(o=>o.id!==v.id && o.t===v.t).concat(shuffle(VOK.filter(o=>o.id!==v.id)))).slice(0,3);
@@ -122,23 +198,25 @@ function quiz(){
   }
   const q = quizQ, ask = q.dir==='es' ? esHtml(q.v.es) : q.v.de;
   main.innerHTML = `<div class="stack">${topicBar()}${dirBar()}
-    <div class="card" style="min-height:140px"><div class="topic">${q.dir==='es'?'Was heißt das auf Deutsch?':'Wie heißt das auf '+L.name+'?'}</div><div class="word">${ask}</div></div>
+    <div class="card" style="min-height:140px"><div class="topic">${q.dir==='es'?'Was heißt das auf Deutsch?':'Wie heißt das auf '+L.name+'?'}</div><div class="word">${ask}</div>${q.dir==='es' || q.answered!==null ? spk(q.v.es) : ''}</div>
     <div class="stack" id="opts">${q.opts.map((o,i)=>{
       let cls='opt'; if(q.answered!==null){ if(o.id===q.v.id) cls+=' right'; else if(i===q.answered) cls+=' wrong'; }
       return `<button class="${cls}" data-i="${i}">${q.dir==='es'?o.de:esHtml(o.es)}</button>`;}).join('')}</div>
     <div class="row"><button class="btn primary" id="next" ${q.answered===null?'hidden':''}>Weiter</button></div>
   </div>`;
-  document.querySelectorAll('#opts .opt').forEach(b=>b.onclick=()=>{ if(q.answered!==null) return; q.answered=+b.dataset.i; grade(q.v, q.opts[q.answered].id===q.v.id, q.dir); render(); });
+  if(q.dir==='es') autoSay('q'+q.v.id, q.v.es);
+  document.querySelectorAll('#opts .opt').forEach(b=>b.onclick=()=>{ if(q.answered!==null) return; q.answered=+b.dataset.i; grade(q.v, q.opts[q.answered].id===q.v.id, q.dir); if(q.dir==='de' && state.auto) speak(q.v.es); render(); });
   document.getElementById('next').onclick=()=>{ quizQ=null; render(); };
 }
 
 function schreiben(){
+  if(emptyGuard()) return;
   if(!wrQ){ wrQ = { v: pick('de')[0], res:null, typed:'' }; }
   const q = wrQ;
   main.innerHTML = `<div class="stack">${topicBar()}
     <div class="card" style="min-height:120px"><div class="topic">Auf ${L.name}, mit Artikel</div><div class="word">${q.v.de}</div></div>
-    <form id="f"><input type="text" id="ans" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${L.placeholder}" value="${q.typed.replace(/"/g,'&quot;')}" ${q.res?'disabled':''}></form>
-    <div class="feedback ${q.res?q.res.cls:''}">${q.res?q.res.msg:''}</div>
+    <form id="f" class="inrow"><input type="text" id="ans" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${L.placeholder}" value="${q.typed.replace(/"/g,'&quot;')}" ${q.res?'disabled':''}>${q.res?'':micBtn('ans')}</form>
+    <div class="feedback ${q.res?q.res.cls:''}">${q.res?q.res.msg:''} ${q.res?spk(q.v.es):''}</div>
     <div class="row">${q.res ? '<button class="btn primary" id="next">Weiter</button>' : '<button class="btn primary" id="check">Prüfen</button><button class="btn" id="skip">Weiß ich nicht</button>'}</div>
     <p class="legend">${L.toleranceHint} Bei mehreren Varianten reicht eine.</p>
   </div>`;
@@ -159,7 +237,9 @@ function schreiben(){
   const c = document.getElementById('check'); if(c) c.onclick=check;
   const s = document.getElementById('skip'); if(s) s.onclick=()=>{ q.res={cls:'bad',msg:`Lösung: ${q.v.es}`}; grade(q.v,false,'de'); render(); };
   const n = document.getElementById('next'); if(n) n.onclick=()=>{ wrQ=null; render(); };
-  if(!q.res) setTimeout(()=>inp.focus(),0);
+  bindMic(check);
+  if(q.res) autoSay('w'+q.v.id, q.v.es);
+  if(!q.res && !micOk()) setTimeout(()=>inp.focus(),0);
 }
 
 function saetze(){
@@ -174,8 +254,8 @@ function saetze(){
     <div class="card" style="min-height:150px"><div class="topic">Ergänze den Satz</div>
       <div class="word" style="font-size:clamp(20px,5.5vw,26px)">${sent}</div>
       <div class="hint">${q.s.de}</div></div>
-    <form id="sf"><input type="text" id="sans" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="fehlendes Wort …" value="${q.typed.replace(/"/g,'&quot;')}" ${q.res?'disabled':''}></form>
-    <div class="feedback ${q.res?q.res.cls:''}">${q.res?q.res.msg:''}</div>
+    <form id="sf" class="inrow"><input type="text" id="sans" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="fehlendes Wort …" value="${q.typed.replace(/"/g,'&quot;')}" ${q.res?'disabled':''}>${q.res?'':micBtn('sans')}</form>
+    <div class="feedback ${q.res?q.res.cls:''}">${q.res?q.res.msg:''} ${q.res?spk(q.s.es,'Satz anhören'):''}</div>
     <div class="row">${q.res ? '<button class="btn primary" id="snext">Nächster Satz</button>' : '<button class="btn primary" id="scheck">Prüfen</button><button class="btn" id="sskip">Lösung zeigen</button>'}</div>
     <p class="legend">${list.length} Sätze in dieser Auswahl. Richtig gelöst: ${state.sDone}</p>
   </div>`;
@@ -192,13 +272,66 @@ function saetze(){
   const c=document.getElementById('scheck'); if(c) c.onclick=check;
   const k=document.getElementById('sskip'); if(k) k.onclick=()=>{ q.res={cls:'bad',msg:`Lösung: ${q.b}`}; render(); };
   const n=document.getElementById('snext'); if(n) n.onclick=()=>{ saQ=null; render(); };
-  if(!q.res) setTimeout(()=>inp.focus(),0);
+  bindMic(check);
+  if(q.res) autoSay('s'+q.s.es, q.s.es);
+  if(!q.res && !micOk()) setTimeout(()=>inp.focus(),0);
+}
+
+// ---------- Erstdurchgang „Neu" ----------
+function durchgang(){
+  const P = F.packSize, seenN = VOK.filter(isSeen).length, doneN = VOK.filter(isDone).length;
+  const next = VOK.find(v=>!isSeen(v));
+  const bar = `<div class="stack" style="gap:6px"><div class="legend">Durchgesehen: <b>${seenN}</b> von ${VOK.length} · erledigt: ${doneN} · zum Lernen: ${seenN-doneN}</div>
+    <div class="bar"><i style="width:${seenN/VOK.length*100}%"></i></div></div>`;
+  const undo = state.lastNew ? `<button class="chip" id="undo">↩︎ Letztes Wort zurück</button>` : '';
+  if(!next){ main.innerHTML = `<div class="stack">${bar}<div class="card"><div class="word">Alle Wörter durchgesehen 🎉</div><div class="hint">Weiter unter „Karten".</div></div><div class="row">${undo}</div></div>`; bindUndo(); return; }
+  const inPack = seenN % P;
+  if(inPack===0 && seenN>0 && state.packAck!==seenN){
+    main.innerHTML = `<div class="stack">${bar}<div class="card"><div class="topic">Paket ${seenN/P} fertig</div><div class="word">Gut gemacht!</div>
+      <div class="hint">${VOK.filter(v=>isSeen(v)&&!isDone(v)&&isDue(v,'es')).length} Wörter heute zum Lernen fällig.</div></div>
+      <div class="row"><button class="btn" id="toCards">Zu den Karten</button><button class="btn primary" id="nextPack">Nächstes Paket</button></div><div class="row">${undo}</div></div>`;
+    document.getElementById('toCards').onclick = () => { state.packAck = seenN; view='karten'; save(); render(); };
+    document.getElementById('nextPack').onclick = () => { state.packAck = seenN; save(); render(); };
+    bindUndo(); return;
+  }
+  if(!cur || cur.id!==next.id || view!=='durchgang'){ cur = next; flipped = false; }
+  main.innerHTML = `<div class="stack">${bar}
+    <button class="card" id="card">
+      <div class="topic">Paket ${Math.floor(seenN/P)+1} · ${inPack+1}/${P} · ${next.t}</div>
+      <div class="word">${esHtml(next.es)}</div>
+      <div class="hint">${flipped ? next.de : 'Tippen für Deutsch'}</div>
+    </button>
+    ${canSpeak()?`<div class="row">${spk(next.es,'Anhören')}</div>`:''}
+    ${flipped ? exHtml(next) : ''}
+    <div class="row">
+      <button class="btn" id="nNeu">Neu</button>
+      <button class="btn" id="nUns">Unsicher</button>
+      <button class="btn ok" id="nKann">Kann ich</button>
+    </div>
+    <div class="row">${undo}${repBtn(next)}</div>
+    <p class="legend"><b>Kann ich</b> = erledigt, kommt nicht mehr (in der Liste zurückholbar). <b>Unsicher</b> = Wiederholung in ${INTERVALS[2]} Tagen. <b>Neu</b> = ab morgen in den Karten. ${L.legend||''}</p>
+  </div>`;
+  autoSay('n'+next.id, next.es);
+  const mark = (fn) => { state.n = state.n||{}; state.n[next.id]=1; state.lastNew = next.id; fn(); save(); cur=null; render(); };
+  document.getElementById('card').onclick = () => { flipped=!flipped; render(); };
+  document.getElementById('nKann').onclick = () => mark(()=>{ markDone(next); });
+  document.getElementById('nUns').onclick = () => mark(()=>{ ['es','de'].forEach(d=>{ const q=prog(next.id,d); q.b=2; q.due=today()+INTERVALS[2]; }); });
+  document.getElementById('nNeu').onclick = () => mark(()=>{ ['es','de'].forEach(d=>{ const q=prog(next.id,d); q.b=1; q.due=today()+1; }); });
+  bindUndo();
+}
+function bindUndo(){
+  const u = document.getElementById('undo'); if(!u) return;
+  u.onclick = () => { const id = state.lastNew; [state.n,state.x,state.p,state.pd].forEach(o=>{ if(o) delete o[id]; }); delete state.lastNew; delete state.packAck; save(); cur=null; render(); };
 }
 
 function liste(){
-  const lEs = VOK.filter(v=>prog(v.id,'es').b>=4).length, lDe = VOK.filter(v=>prog(v.id,'de').b>=4).length, P = pool();
+  const lEs = VOK.filter(v=>isDone(v)||prog(v.id,'es').b>=4).length, lDe = VOK.filter(v=>isDone(v)||prog(v.id,'de').b>=4).length, P = pool().slice();
   const sortD = state.sort==='datum';
-  const row = v => `<tr><td>${esHtml(v.es)}</td><td>${v.de}</td><td>${prog(v.id,'es').b} · ${prog(v.id,'de').b}<br><span class="mini">${mon(v.d)}</span></td></tr>`;
+  const lf = state.lf || 'alle';
+  if(F.firstPass){ const all = VOK.filter(v=>(topic==='alle'||v.t===topic) && inTime(v.d));
+    P.length = 0; all.filter(v => lf==='alle' || (lf==='lernen' && isSeen(v) && !isDone(v)) || (lf==='erledigt' && isDone(v)) || (lf==='offen' && !isSeen(v))).forEach(v=>P.push(v)); }
+  const st = v => !F.firstPass ? `${prog(v.id,'es').b} · ${prog(v.id,'de').b}` : isDone(v) ? `<button class="chip" data-back="${esc(v.id)}">✓ zurückholen</button>` : isSeen(v) ? `${prog(v.id,'es').b} · ${prog(v.id,'de').b}` : '–';
+  const row = v => `<tr><td>${canSpeak()?`<span data-say="${esc(v.es)}" style="cursor:pointer">${esHtml(v.es)}</span>`:esHtml(v.es)}</td><td>${v.de}</td><td>${st(v)}<br><span class="mini">${mon(v.d)}</span></td></tr>`;
   const groups = sortD
     ? [...new Set(P.map(v=>v.d.slice(0,7)))].sort().reverse().map(m=>[mon(m+'-01'), P.filter(v=>v.d.startsWith(m))])
     : TOPICS.map(t=>[t, P.filter(v=>v.t===t)]).filter(g=>g[1].length);
@@ -208,11 +341,15 @@ function liste(){
       <div class="legend">${DIRNAME.de}: ${lDe} von ${VOK.length} sicher (Fach 4–5)</div><div class="bar"><i style="width:${lDe/VOK.length*100}%"></i></div>
       <div class="mini">Rechte Spalte: Fach ${L.code} → DE · Fach DE → ${L.code}</div></div>
     <div class="row"><button class="chip ${sortD?'':'on'}" id="sThema">Nach Thema</button><button class="chip ${sortD?'on':''}" id="sDatum">Nach Datum</button></div>
+    ${F.firstPass ? `<div class="row">${[['alle','Alle'],['lernen','Lernen'],['erledigt','Erledigt'],['offen','Noch offen']].map(([k,l])=>`<button class="chip ${lf===k?'on':''}" data-lf="${k}">${l}</button>`).join('')}</div>` : ''}
+    ${canSpeak() ? '<p class="mini" style="margin:0">Auf ein Wort tippen = vorlesen.</p>' : ''}
     ${groups.map(([h,vs])=>`<h2>${h}</h2><table>${vs.map(row).join('')}</table>`).join('')}
     <p class="legend">${VOK.length} Vokabeln gesamt. Sicherung und Einstellungen: ⚙️ oben rechts.</p>
   </div>`;
   document.getElementById('sThema').onclick=()=>{ state.sort='thema'; save(); render(); };
   document.getElementById('sDatum').onclick=()=>{ state.sort='datum'; save(); render(); };
+  document.querySelectorAll('[data-lf]').forEach(b=>b.onclick=()=>{ state.lf=b.dataset.lf; save(); render(); });
+  document.querySelectorAll('[data-back]').forEach(b=>b.onclick=()=>{ const id=b.dataset.back; delete state.x[id]; ['es','de'].forEach(d=>{ const q=prog(id,d); q.b=1; q.due=today(); }); save(); render(); });
 }
 
 // ---------- Erinnerung an die Sicherung ----------
@@ -246,6 +383,12 @@ function einst(){
     <h2>Erinnerung an die Sicherung</h2>
     <div class="row" role="group" aria-label="Erinnerung">${[[0,'Aus'],[14,'alle 14 Tage'],[30,'alle 30 Tage']]
       .map(([k,l])=>`<button class="chip ${every===k?'on':''}" data-rem="${k}">${l}</button>`).join('')}</div>
+    ${F.tts ? `<h2>Sprachausgabe</h2>
+    <p class="legend">${canSpeak() ? `Stimme: <b>${VOICE ? esc(VOICE.name) : 'Standard ('+TTS_LANG+')'}</b>. Bessere Stimmen: iPhone-Einstellungen → Bedienungshilfen → Gesprochene Inhalte → Stimmen → ${L.name} laden.` : 'Auf diesem Gerät nicht verfügbar.'}</p>
+    ${canSpeak() ? `<div class="row" role="group" aria-label="Automatisch vorlesen">${[[0,'Nur auf Tippen'],[1,'Automatisch vorlesen']].map(([k,l])=>`<button class="chip ${(state.auto?1:0)===k?'on':''}" data-auto="${k}">${l}</button>`).join('')}</div>
+    <div class="row" role="group" aria-label="Tempo">${[[0.7,'Langsam'],[0.9,'Normal'],[1.05,'Schnell']].map(([k,l])=>`<button class="chip ${(state.rate||0.9)===k?'on':''}" data-rate="${k}">${l}</button>`).join('')} ${spk(VOK[0]?VOK[0].es:'','Test')}</div>` : ''}` : ''}
+    ${F.mic ? `<h2>Spracheingabe</h2><p class="legend">${micOk() ? 'Mikrofon-Knopf 🎤 in „Schreiben" und „Sätze" ist aktiv.' : 'Eigener Mikrofon-Knopf wird von diesem Browser nicht unterstützt.'} Alternative immer: ${L.name}-Tastatur hinzufügen (Einstellungen → Allgemein → Tastatur → Tastaturen) und das Mikrofon der Tastatur verwenden.</p>` : ''}
+    ${F.report ? `<h2>Gemeldete Fehler</h2>${Object.keys(state.flag||{}).length ? `<p class="legend">${Object.keys(state.flag).map(esc).join(' · ')}</p><div class="row"><button class="btn" id="repCopy">Liste kopieren</button><button class="btn" id="repClear">Liste leeren</button></div>` : '<p class="legend">Keine. Auf einer Karte „⚑ Fehler melden" tippen, dann die Liste hier kopieren und an Claude schicken.</p>'}` : ''}
     <h2>Fortschritt</h2>
     <div class="row"><button class="btn" id="reset">Fortschritt zurücksetzen</button></div>
     <p class="legend">${L.title} · ${VOK.length} Vokabeln · Der Lernstand liegt nur auf diesem Gerät.</p>
@@ -254,7 +397,7 @@ function einst(){
   const ta = document.getElementById('code'), msg = document.getElementById('cmsg');
   document.getElementById('exp').onclick = () => {
     const pack = src => { const o = {}; for(const k in (src||{})){ const e = src[k]; if(e.b>1 || e.due>0) o[k]=[e.b,e.due]; } return o; };
-    const code = L.codePrefix + btoa(unescape(encodeURIComponent(JSON.stringify({p:pack(state.p), q:pack(state.pd), s:state.sDone||0, d:state.done||0}))));
+    const code = L.codePrefix + btoa(unescape(encodeURIComponent(JSON.stringify(Object.assign({p:pack(state.p), q:pack(state.pd), s:state.sDone||0, d:state.done||0}, F.firstPass ? {n:Object.keys(state.n||{}), x:state.x||{}} : {})))));
     ta.hidden = false; ta.value = code;
     state.lastBackup = today(); save();
     const done = () => { msg.className='feedback ok'; msg.textContent='Code kopiert – z. B. in Notizen einfügen.'; };
@@ -268,19 +411,25 @@ function einst(){
       const o = JSON.parse(decodeURIComponent(escape(atob(raw.slice(L.codePrefix.length)))));
       const unpack = src => { const r = {}; for(const k in (src||{})) r[k] = {b:src[k][0], due:src[k][1]}; return r; };
       state.p = unpack(o.p); state.pd = unpack(o.q);
-      state.sDone = o.s||0; state.done = o.d||0; state.lastBackup = today(); save();
+      state.sDone = o.s||0; state.done = o.d||0; state.lastBackup = today();
+      if(o.n){ state.n = {}; o.n.forEach(k=>state.n[k]=1); } if(o.x) state.x = o.x;
+      save();
       msg.className='feedback ok'; msg.textContent='Lernstand wiederhergestellt.'; setTimeout(render, 800);
     }catch(e){ msg.className='feedback bad'; msg.textContent='Der Code ist ungültig oder unvollständig.'; }
   };
   document.querySelectorAll('[data-rem]').forEach(b=>b.onclick=()=>{ state.remind = +b.dataset.rem; save(); render(); });
+  document.querySelectorAll('[data-auto]').forEach(b=>b.onclick=()=>{ state.auto = +b.dataset.auto; save(); render(); });
+  document.querySelectorAll('[data-rate]').forEach(b=>b.onclick=()=>{ state.rate = +b.dataset.rate; save(); render(); });
+  const rc = document.getElementById('repCopy'); if(rc) rc.onclick = () => { const t = 'Fehler '+L.title+': '+Object.keys(state.flag).join(' | '); try{ navigator.clipboard.writeText(t).then(()=>{ msg.className='feedback ok'; msg.textContent='Fehlerliste kopiert.'; }); }catch(e){} ta.hidden=false; ta.value=t; };
+  const rl = document.getElementById('repClear'); if(rl) rl.onclick = () => { state.flag = {}; save(); render(); };
   document.getElementById('reset').onclick = e => {
-    if(e.target.dataset.sure){ state.p={}; state.pd={}; state.done=0; save(); render(); }
+    if(e.target.dataset.sure){ state.p={}; state.pd={}; state.done=0; state.n={}; state.x={}; delete state.lastNew; delete state.packAck; save(); render(); }
     else { e.target.dataset.sure='1'; e.target.textContent='Wirklich zurücksetzen? Nochmal tippen'; }
   };
   document.getElementById('back').onclick = () => { view = state.lastView || F.modes[0]; save(); render(); };
 }
 
 document.querySelectorAll('nav button').forEach(b=>{ if(!F.modes.includes(b.dataset.v)) b.remove(); });
-document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{ view=b.dataset.v; save(); render(); });
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{ view=b.dataset.v; cur=quizQ=wrQ=saQ=null; save(); render(); });
 if(!state.firstUse){ state.firstUse = today(); save(); }
 render();

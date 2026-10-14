@@ -66,3 +66,10 @@ textarea{font:12px/1.4 ui-monospace,monospace;width:100%;min-height:70px;padding
 #gear{font-size:20px;line-height:1;padding:6px 8px;border-radius:10px;margin-left:4px}
 #gear.on{background:var(--accent);color:var(--accent-ink)}
 header .hr{display:flex;align-items:center;gap:6px}
+/* Sprachausgabe / Spracheingabe / Erstdurchgang */
+.spk{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-size:14px;font-weight:600}
+.inrow{display:flex;gap:8px;align-items:stretch}
+.inrow input{flex:1;min-width:0}
+.btn.mic{flex:none;padding:0 16px;font-size:20px}
+.btn.mic.on{background:var(--bad);color:#fff;border-color:var(--bad);font-size:14px}
+.ex{font-size:15px;line-height:1.45;padding:10px 12px;border-radius:12px;background:var(--surface);border:1px dashed var(--line)}

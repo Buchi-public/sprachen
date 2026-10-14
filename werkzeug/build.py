@@ -34,6 +34,7 @@ page = f'''<!doctype html><html lang="de"><head><meta charset="utf-8">
 <header><h1>{cfg['h1']}</h1><div class="hr"><div id="stats"></div><button id="gear" aria-label="Einstellungen">⚙️</button></div></header>
 <main id="main"></main>
 <nav id="nav">
+  <button data-v="durchgang"><span class="ico">🆕</span>Neu</button>
   <button data-v="karten"><span class="ico">🃏</span>Karten</button>
   <button data-v="quiz"><span class="ico">✅</span>Quiz</button>
   <button data-v="schreiben"><span class="ico">✍️</span>Schreiben</button>
