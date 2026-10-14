@@ -1,0 +1,14 @@
+{
+  "key": "acomer",
+  "name": "Spanisch",
+  "code": "ES",
+  "title": "Español",
+  "h1": "Espa<span>ñol</span>",
+  "articles": {"el": "a1", "los": "a1", "la": "a2", "las": "a2"},
+  "legend": "<span class=\"a1\">el/los</span> männlich, <span class=\"a2\">la/las</span> weiblich.",
+  "placeholder": "el / la …",
+  "fold": [],
+  "toleranceHint": "Akzente werden tolerant geprüft (limon = limón zählt, wird aber angezeigt). Bei mehreren Varianten reicht eine.",
+  "codePrefix": "ES1:",
+  "features": {}
+}
