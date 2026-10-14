@@ -7,6 +7,7 @@ const F = Object.assign({modes:['karten','quiz','schreiben','saetze','liste'], i
   mic:false,         // Mikrofon-Knopf in Schreiben/Sätze (Spracherkennung des Browsers, falls vorhanden)
   firstPass:false,   // Erstdurchgang „Neu": alle Wörter einmal sichten; „Kann ich" = erledigt (kommt nie wieder)
   packSize:50,       // Wörter pro Paket im Erstdurchgang
+  autoSpeak:true,    // Standard: automatisch vorlesen (in ⚙️ abschaltbar)
   report:false       // Knopf „Fehler melden" + Liste in den Einstellungen
 }, L.features||{});
 const VOK = DATA.vokabeln;
@@ -70,7 +71,9 @@ function speak(t){
 }
 const spk = (t, label) => canSpeak() ? `<button type="button" class="spk" data-say="${esc(t)}" aria-label="Vorlesen">🔊${label?' '+label:''}</button>` : '';
 let lastAuto = '';
-function autoSay(key, t){ if(state.auto && canSpeak() && lastAuto!==key){ lastAuto = key; setTimeout(()=>speak(t), 150); } }
+const autoOn = () => (state.auto ?? (F.autoSpeak ? 1 : 0)) ? true : false;
+// synchron im Tipp-Ablauf aufrufen – iOS spricht nur bei direkter Nutzeraktion
+function autoSay(key, t){ if(autoOn() && canSpeak() && lastAuto!==key){ lastAuto = key; speak(t); } }
 document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-say]'); if(b){ e.preventDefault(); e.stopPropagation(); speak(b.dataset.say); } }, true);
 
 // ---------- Spracheingabe ----------
@@ -93,7 +96,7 @@ function bindMic(after){
 // ---------- Fehler melden ----------
 const repBtn = v => F.report ? `<button type="button" class="chip ${state.flag&&state.flag[v.id]?'on':''}" data-flag="${esc(v.id)}">⚑ ${state.flag&&state.flag[v.id]?'Gemeldet':'Fehler melden'}</button>` : '';
 document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-flag]'); if(b){ state.flag = state.flag||{}; const id=b.dataset.flag; if(state.flag[id]) delete state.flag[id]; else state.flag[id]=1; save(); render(); } });
-const exHtml = v => v.ex ? `<div class="ex">${v.ex}${v.exde?`<br><span class="mini" style="font-size:13px">${v.exde}</span>`:''} ${spk(v.ex)}</div>` : '';
+const exHtml = v => (v.f ? `<div class="legend" style="text-align:center">Formen: <b>${v.f}</b></div>` : '') + (v.ex ? `<div class="ex">${v.ex}${v.exde?`<br><span class="mini" style="font-size:13px">${v.exde}</span>`:''} ${spk(v.ex)}</div>` : '');
 function pick(force){
   const ds = force ? [force] : dirsActive(), c = [];
   pool().forEach(v=>ds.forEach(d=>{ if(isDue(v,d)) c.push([v,d]); }));
@@ -205,7 +208,7 @@ function quiz(){
     <div class="row"><button class="btn primary" id="next" ${q.answered===null?'hidden':''}>Weiter</button></div>
   </div>`;
   if(q.dir==='es') autoSay('q'+q.v.id, q.v.es);
-  document.querySelectorAll('#opts .opt').forEach(b=>b.onclick=()=>{ if(q.answered!==null) return; q.answered=+b.dataset.i; grade(q.v, q.opts[q.answered].id===q.v.id, q.dir); if(q.dir==='de' && state.auto) speak(q.v.es); render(); });
+  document.querySelectorAll('#opts .opt').forEach(b=>b.onclick=()=>{ if(q.answered!==null) return; q.answered=+b.dataset.i; grade(q.v, q.opts[q.answered].id===q.v.id, q.dir); if(q.dir==='de' && autoOn()) speak(q.v.es); render(); });
   document.getElementById('next').onclick=()=>{ quizQ=null; render(); };
 }
 
@@ -385,7 +388,7 @@ function einst(){
       .map(([k,l])=>`<button class="chip ${every===k?'on':''}" data-rem="${k}">${l}</button>`).join('')}</div>
     ${F.tts ? `<h2>Sprachausgabe</h2>
     <p class="legend">${canSpeak() ? `Stimme: <b>${VOICE ? esc(VOICE.name) : 'Standard ('+TTS_LANG+')'}</b>. Bessere Stimmen: iPhone-Einstellungen → Bedienungshilfen → Gesprochene Inhalte → Stimmen → ${L.name} laden.` : 'Auf diesem Gerät nicht verfügbar.'}</p>
-    ${canSpeak() ? `<div class="row" role="group" aria-label="Automatisch vorlesen">${[[0,'Nur auf Tippen'],[1,'Automatisch vorlesen']].map(([k,l])=>`<button class="chip ${(state.auto?1:0)===k?'on':''}" data-auto="${k}">${l}</button>`).join('')}</div>
+    ${canSpeak() ? `<div class="row" role="group" aria-label="Automatisch vorlesen">${[[0,'Nur auf Tippen'],[1,'Automatisch vorlesen']].map(([k,l])=>`<button class="chip ${(autoOn()?1:0)===k?'on':''}" data-auto="${k}">${l}</button>`).join('')}</div>
     <div class="row" role="group" aria-label="Tempo">${[[0.7,'Langsam'],[0.9,'Normal'],[1.05,'Schnell']].map(([k,l])=>`<button class="chip ${(state.rate||0.9)===k?'on':''}" data-rate="${k}">${l}</button>`).join('')} ${spk(VOK[0]?VOK[0].es:'','Test')}</div>` : ''}` : ''}
     ${F.mic ? `<h2>Spracheingabe</h2><p class="legend">${micOk() ? 'Mikrofon-Knopf 🎤 in „Schreiben" und „Sätze" ist aktiv.' : 'Eigener Mikrofon-Knopf wird von diesem Browser nicht unterstützt.'} Alternative immer: ${L.name}-Tastatur hinzufügen (Einstellungen → Allgemein → Tastatur → Tastaturen) und das Mikrofon der Tastatur verwenden.</p>` : ''}
     ${F.report ? `<h2>Gemeldete Fehler</h2>${Object.keys(state.flag||{}).length ? `<p class="legend">${Object.keys(state.flag).map(esc).join(' · ')}</p><div class="row"><button class="btn" id="repCopy">Liste kopieren</button><button class="btn" id="repClear">Liste leeren</button></div>` : '<p class="legend">Keine. Auf einer Karte „⚑ Fehler melden" tippen, dann die Liste hier kopieren und an Claude schicken.</p>'}` : ''}
