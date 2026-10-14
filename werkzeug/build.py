@@ -31,7 +31,7 @@ page = f'''<!doctype html><html lang="de"><head><meta charset="utf-8">
 {color_css}
 <style>:root{{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}}[hidden]{{display:none!important}}</style>
 </head><body>
-<header><h1>{cfg['h1']}</h1><div id="stats"></div></header>
+<header><h1>{cfg['h1']}</h1><div class="hr"><div id="stats"></div><button id="gear" aria-label="Einstellungen">⚙️</button></div></header>
 <main id="main"></main>
 <nav id="nav">
   <button data-v="karten"><span class="ico">🃏</span>Karten</button>

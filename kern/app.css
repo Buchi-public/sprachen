@@ -63,3 +63,6 @@ h2{font-family:var(--display);font-size:19px;margin:14px 0 8px}
 textarea{font:12px/1.4 ui-monospace,monospace;width:100%;min-height:70px;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);word-break:break-all}
 .bar i{display:block;height:100%;background:var(--accent)}
 @media (prefers-reduced-motion:no-preference){.card{transition:transform .15s}}
+#gear{font-size:20px;line-height:1;padding:6px 8px;border-radius:10px;margin-left:4px}
+#gear.on{background:var(--accent);color:var(--accent-ink)}
+header .hr{display:flex;align-items:center;gap:6px}

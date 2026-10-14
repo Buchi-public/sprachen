@@ -8,7 +8,7 @@ const SAETZE = DATA.saetze;
 const TOPICS = [...new Set(VOK.map(v=>v.t))];
 const INTERVALS = F.intervals; // Tage pro Fach 1..5 (Index 1..5), je Sprache einstellbar
 let state = load();
-let view = F.modes.includes(state.view) ? state.view : F.modes[0];
+let view = (F.modes.includes(state.view) || state.view==='einst') ? state.view : F.modes[0];
 let topic = state.topic || 'alle';
 let zeit = state.zeit || 'alle';
 let ab = state.ab || VOK.map(v=>v.d).sort()[0];
@@ -61,6 +61,7 @@ function topicBar(){
       <option value="ab" ${zeit==='ab'?'selected':''}>Ab Datum</option></select></div>
     ${zeit==='ab' ? `<label class="legend row" style="flex-wrap:nowrap">Stoff ab <input type="date" id="ab" value="${ab}" style="font:inherit;padding:6px 8px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg)"></label>` : ''}
     ${pool().length ? '' : '<p class="feedback bad">Keine Wörter in diesem Zeitraum – zeige alle.</p>'}
+    ${reminderHtml()}
     ${STORE_OK ? '' : '<p class="warn">⚠️ Dieser Browser speichert den Fortschritt nicht. Link in Safari oder Chrome öffnen (nicht aus WhatsApp oder der Claude-App) – oder unter „Liste" einen Sicherungscode kopieren.</p>'}`;
 }
 function dirPick(){ const d = state.dir || F.dirDefault; return d==='mix' ? (Math.random()<.5?'es':'de') : d; }
@@ -81,7 +82,8 @@ const main = document.getElementById('main');
 function render(){
   header();
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on', b.dataset.v===view));
-  ({karten, quiz, schreiben, saetze, liste})[view]();
+  const g = document.getElementById('gear'); if(g){ g.classList.toggle('on', view==='einst'); g.onclick = () => { view = view==='einst' ? (state.lastView||F.modes[0]) : (state.lastView=view, 'einst'); save(); render(); }; }
+  ({karten, quiz, schreiben, saetze, liste, einst})[view]();
   const reset = () => { cur=quizQ=wrQ=saQ=null; save(); render(); };
   document.querySelectorAll('[data-dir]').forEach(b=>b.onclick=()=>{ state.dir=b.dataset.dir; reset(); });
   const sel = document.getElementById('topic'); if(sel) sel.onchange = e => { topic=e.target.value; reset(); };
@@ -204,19 +206,54 @@ function liste(){
       <div class="mini">Rechte Spalte: Fach ${L.code} → DE · Fach DE → ${L.code}</div></div>
     <div class="row"><button class="chip ${sortD?'':'on'}" id="sThema">Nach Thema</button><button class="chip ${sortD?'on':''}" id="sDatum">Nach Datum</button></div>
     ${groups.map(([h,vs])=>`<h2>${h}</h2><table>${vs.map(row).join('')}</table>`).join('')}
+    <p class="legend">${VOK.length} Vokabeln gesamt. Sicherung und Einstellungen: ⚙️ oben rechts.</p>
+  </div>`;
+  document.getElementById('sThema').onclick=()=>{ state.sort='thema'; save(); render(); };
+  document.getElementById('sDatum').onclick=()=>{ state.sort='datum'; save(); render(); };
+}
+
+// ---------- Erinnerung an die Sicherung ----------
+function hasProgress(){ return ['p','pd'].some(k=>Object.values(state[k]||{}).some(e=>e.b>1)); }
+function reminderDue(){
+  const every = state.remind ?? 30; if(!every || !hasProgress()) return false;
+  const last = state.lastBackup || state.firstUse || (state.firstUse = today());
+  return today() - last >= every && today() >= (state.snooze||0);
+}
+function reminderHtml(){
+  if(!reminderDue()) return '';
+  const last = state.lastBackup ? `zuletzt vor ${today()-state.lastBackup} Tagen` : 'noch nie gesichert';
+  return `<p class="warn">💾 Sicherung empfohlen (${last}). <button class="chip" id="remGo">Jetzt sichern</button> <button class="chip" id="remLater">Später</button></p>`;
+}
+document.addEventListener('click', e => {
+  if(e.target.id==='remGo'){ state.lastView = view; view='einst'; save(); render(); }
+  if(e.target.id==='remLater'){ state.snooze = today()+3; save(); render(); }
+});
+
+// ---------- Einstellungen ----------
+function einst(){
+  const every = state.remind ?? 30;
+  const last = state.lastBackup ? new Date(state.lastBackup*864e5).toLocaleDateString('de-AT') : 'noch nie';
+  main.innerHTML = `<div class="stack">
     <h2>Sicherung</h2>
-    <p class="legend">Speichern auf diesem Gerät: <b>${STORE_OK?'funktioniert':'nicht möglich'}</b>. Mit dem Sicherungscode kannst du deinen Lernstand aufheben (z. B. in Notizen) oder auf ein anderes Gerät übertragen.</p>
+    <p class="legend">Speichern auf diesem Gerät: <b>${STORE_OK?'funktioniert':'nicht möglich'}</b>. Letzte Sicherung: <b>${last}</b>.<br>
+      Mit dem Sicherungscode hebst du deinen Lernstand auf (z. B. in Notizen) oder überträgst ihn auf ein anderes Gerät.</p>
     <div class="row"><button class="btn" id="exp">Code kopieren</button><button class="btn" id="imp">Code einfügen</button></div>
     <textarea id="code" aria-label="Sicherungscode" placeholder="Hier erscheint bzw. hierher kommt der Code" hidden></textarea>
     <div class="feedback" id="cmsg"></div>
+    <h2>Erinnerung an die Sicherung</h2>
+    <div class="row" role="group" aria-label="Erinnerung">${[[0,'Aus'],[14,'alle 14 Tage'],[30,'alle 30 Tage']]
+      .map(([k,l])=>`<button class="chip ${every===k?'on':''}" data-rem="${k}">${l}</button>`).join('')}</div>
+    <h2>Fortschritt</h2>
     <div class="row"><button class="btn" id="reset">Fortschritt zurücksetzen</button></div>
-    <p class="legend">${VOK.length} Vokabeln gesamt. Der Lernstand bleibt auf diesem Handy gespeichert.</p>
+    <p class="legend">${L.title} · ${VOK.length} Vokabeln · Der Lernstand liegt nur auf diesem Gerät.</p>
+    <div class="row"><button class="btn primary" id="back">Zurück zum Lernen</button></div>
   </div>`;
   const ta = document.getElementById('code'), msg = document.getElementById('cmsg');
   document.getElementById('exp').onclick = () => {
     const pack = src => { const o = {}; for(const k in (src||{})){ const e = src[k]; if(e.b>1 || e.due>0) o[k]=[e.b,e.due]; } return o; };
     const code = L.codePrefix + btoa(unescape(encodeURIComponent(JSON.stringify({p:pack(state.p), q:pack(state.pd), s:state.sDone||0, d:state.done||0}))));
     ta.hidden = false; ta.value = code;
+    state.lastBackup = today(); save();
     const done = () => { msg.className='feedback ok'; msg.textContent='Code kopiert – z. B. in Notizen einfügen.'; };
     try{ navigator.clipboard.writeText(code).then(done, () => { ta.select(); msg.className='feedback'; msg.textContent='Code markiert – bitte selbst kopieren.'; }); }
     catch(e){ ta.select(); msg.textContent='Code markiert – bitte selbst kopieren.'; }
@@ -228,18 +265,19 @@ function liste(){
       const o = JSON.parse(decodeURIComponent(escape(atob(raw.slice(L.codePrefix.length)))));
       const unpack = src => { const r = {}; for(const k in (src||{})) r[k] = {b:src[k][0], due:src[k][1]}; return r; };
       state.p = unpack(o.p); state.pd = unpack(o.q);
-      state.sDone = o.s||0; state.done = o.d||0; save();
+      state.sDone = o.s||0; state.done = o.d||0; state.lastBackup = today(); save();
       msg.className='feedback ok'; msg.textContent='Lernstand wiederhergestellt.'; setTimeout(render, 800);
     }catch(e){ msg.className='feedback bad'; msg.textContent='Der Code ist ungültig oder unvollständig.'; }
   };
-  document.getElementById('sThema').onclick=()=>{ state.sort='thema'; save(); render(); };
-  document.getElementById('sDatum').onclick=()=>{ state.sort='datum'; save(); render(); };
+  document.querySelectorAll('[data-rem]').forEach(b=>b.onclick=()=>{ state.remind = +b.dataset.rem; save(); render(); });
   document.getElementById('reset').onclick = e => {
     if(e.target.dataset.sure){ state.p={}; state.pd={}; state.done=0; save(); render(); }
     else { e.target.dataset.sure='1'; e.target.textContent='Wirklich zurücksetzen? Nochmal tippen'; }
   };
+  document.getElementById('back').onclick = () => { view = state.lastView || F.modes[0]; save(); render(); };
 }
 
 document.querySelectorAll('nav button').forEach(b=>{ if(!F.modes.includes(b.dataset.v)) b.remove(); });
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{ view=b.dataset.v; save(); render(); });
+if(!state.firstUse){ state.firstUse = today(); save(); }
 render();
