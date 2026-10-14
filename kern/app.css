@@ -73,3 +73,5 @@ header .hr{display:flex;align-items:center;gap:6px}
 .btn.mic{flex:none;padding:0 16px;font-size:20px}
 .btn.mic.on{background:var(--bad);color:#fff;border-color:var(--bad);font-size:14px}
 .ex{font-size:15px;line-height:1.45;padding:10px 12px;border-radius:12px;background:var(--surface);border:1px dashed var(--line)}
+button.box{font:inherit;color:inherit;cursor:pointer}
+.box.sel{border-color:var(--fg);box-shadow:inset 0 0 0 2px var(--fg)}

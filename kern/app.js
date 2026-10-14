@@ -97,7 +97,14 @@ function bindMic(after){
 const repBtn = v => F.report ? `<button type="button" class="chip ${state.flag&&state.flag[v.id]?'on':''}" data-flag="${esc(v.id)}">⚑ ${state.flag&&state.flag[v.id]?'Gemeldet':'Fehler melden'}</button>` : '';
 document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-flag]'); if(b){ state.flag = state.flag||{}; const id=b.dataset.flag; if(state.flag[id]) delete state.flag[id]; else state.flag[id]=1; save(); render(); } });
 const exHtml = v => (v.f ? `<div class="legend" style="text-align:center">Formen: <b>${v.f}</b></div>` : '') + (v.ex ? `<div class="ex">${v.ex}${v.exde?`<br><span class="mini" style="font-size:13px">${v.exde}</span>`:''} ${spk(v.ex)}</div>` : '');
+// Gezielt ein Fach üben (Karten): state.fach = {d, b}
+function fachOn(){ return view==='karten' && state.fach && dirsActive().includes(state.fach.d); }
+function fachList(){ return pool().filter(v=>prog(v.id,state.fach.d).b===state.fach.b); }
 function pick(force){
+  if(!force && fachOn()){
+    const l = fachList(), rest = l.length>1 && cur ? l.filter(v=>v.id!==cur.id) : l;
+    if(rest.length) return [rest[Math.random()*rest.length|0], state.fach.d];
+  }
   const ds = force ? [force] : dirsActive(), c = [];
   pool().forEach(v=>ds.forEach(d=>{ if(isDue(v,d)) c.push([v,d]); }));
   if(c.length) return c[Math.random()*c.length|0];
@@ -137,7 +144,8 @@ const DIRNAME = {es:L.name+' → Deutsch', de:'Deutsch → '+L.name};
 function boxes(){
   return dirsActive().map(d=>{
     const c=[0,0,0,0,0,0]; pool().forEach(v=>c[prog(v.id,d).b]++);
-    return `<div><div class="mini" style="margin:0 0 4px 2px">${DIRNAME[d]}</div><div class="boxes">${[1,2,3,4,5].map(b=>`<div class="box"><b>${c[b]}</b><small>Fach ${b}</small></div>`).join('')}</div></div>`;
+    const sel = state.fach && state.fach.d===d ? state.fach.b : 0;
+    return `<div><div class="mini" style="margin:0 0 4px 2px">${DIRNAME[d]}</div><div class="boxes">${[1,2,3,4,5].map(b=>`<button type="button" class="box ${sel===b?'sel':''}" data-fach="${d}:${b}" aria-label="Fach ${b} üben"><b>${c[b]}</b><small>Fach ${b}</small></button>`).join('')}</div></div>`;
   }).join('');
 }
 
@@ -166,24 +174,28 @@ function emptyGuard(){
 function markDone(v){ state.x = state.x||{}; state.x[v.id] = today(); state.n = state.n||{}; state.n[v.id] = 1; state.done = (state.done||0)+1; save(); }
 function karten(){
   if(emptyGuard()) return;
+  if(fachOn() && !fachList().length){ state.fach = null; save(); }
   if(!cur){ [cur, cardFront] = pick(); flipped=false; }
   const p = prog(cur.id, cardFront);
-  main.innerHTML = `<div class="stack">${topicBar()}${dirBar()}${boxes()}
+  const fBar = fachOn() ? `<p class="warn" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>Nur <b>Fach ${state.fach.b}</b> · ${fachList().length} Wörter</span><button class="chip" id="fachX" style="flex:none">✕ Alle fälligen</button></p>` : '';
+  main.innerHTML = `<div class="stack">${topicBar()}${dirBar()}${boxes()}${fBar}
     <button class="card" id="card">
       <div class="topic">${cur.t} · ${cardFront==='es'?L.code+' → DE':'DE → '+L.code} · Fach ${p.b}</div>
       <div class="word">${(cardFront==='es') !== flipped ? esHtml(cur.es) : cur.de}</div>
       <div class="hint">${flipped ? ((cardFront==='es') ? esHtml(cur.es) : cur.de) : 'Tippen zum Umdrehen'}</div>
     </button>
-    ${(cardFront==='es' || flipped) && canSpeak() ? `<div class="row">${spk(cur.es,'Anhören')}</div>` : ''}
+    ${(cardFront==='es' || flipped) && canSpeak() ? `<div class="row" style="justify-content:center">${spk(cur.es, autoOn()?'':'Anhören')}</div>` : ''}
     ${flipped ? exHtml(cur) : ''}
     <div class="row" id="grade" ${flipped?'':'hidden'}>
       <button class="btn bad" id="no">Nicht gewusst</button>
       <button class="btn ok" id="yes">Gewusst</button>
     </div>
     ${F.knownButton && flipped && (F.firstPass || p.b < 5) ? `<div class="row"><button class="chip" id="known">${F.firstPass?'✓ Kann ich – erledigt (kommt nicht mehr)':'⏩ Kann ich längst – direkt in Fach 5'}</button>${repBtn(cur)}</div>` : (flipped && F.report ? `<div class="row">${repBtn(cur)}</div>` : '')}
-    <p class="legend">Leitner-System: Gewusst → ein Fach weiter (Wiederholung nach ${INTERVALS.slice(1).join(', ')} Tagen). Nicht gewusst → zurück in Fach 1. ${DIRNAME.es} und ${DIRNAME.de} haben getrennte Fächer. ${L.legend||''}</p>
+    <p class="legend">Fach antippen = nur dieses Fach üben (nochmal tippen = aus). Leitner-System: Gewusst → ein Fach weiter (Wiederholung nach ${INTERVALS.slice(1).join(', ')} Tagen). Nicht gewusst → zurück in Fach 1. ${DIRNAME.es} und ${DIRNAME.de} haben getrennte Fächer. ${L.legend||''}</p>
   </div>`;
   document.getElementById('card').onclick = () => { flipped=!flipped; render(); };
+  document.querySelectorAll('[data-fach]').forEach(b=>b.onclick=()=>{ const [d,n]=b.dataset.fach.split(':'); const same = state.fach && state.fach.d===d && state.fach.b===+n; state.fach = same ? null : {d, b:+n}; if(state.fach && !fachList().length){ state.fach=null; } cur=null; save(); render(); });
+  const fx = document.getElementById('fachX'); if(fx) fx.onclick = () => { state.fach=null; cur=null; save(); render(); };
   document.getElementById('yes').onclick = () => { grade(cur,true,cardFront); cur=null; render(); };
   document.getElementById('no').onclick = () => { grade(cur,false,cardFront); cur=null; render(); };
   const kn = document.getElementById('known');
@@ -306,7 +318,7 @@ function durchgang(){
       <div class="word">${esHtml(next.es)}</div>
       <div class="hint">${flipped ? next.de : 'Tippen für Deutsch'}</div>
     </button>
-    ${canSpeak()?`<div class="row">${spk(next.es,'Anhören')}</div>`:''}
+    ${canSpeak()?`<div class="row" style="justify-content:center">${spk(next.es, autoOn()?'':'Anhören')}</div>`:''}
     ${flipped ? exHtml(next) : ''}
     <div class="row">
       <button class="btn" id="nNeu">Neu</button>
