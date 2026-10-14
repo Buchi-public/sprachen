@@ -1,0 +1,22 @@
+{
+  "key": "dansk",
+  "name": "Dänisch",
+  "code": "DA",
+  "tts": "da-DK",
+  "title": "Dansk",
+  "h1": "Dan<span>sk</span>",
+  "articles": {"en": "a1", "et": "a2"},
+  "colors": {"a1": "#1F5FA8", "a2": "#2E8B57", "a1Dark": "#6FA6E8", "a2Dark": "#5CC08A"},
+  "legend": "<span class=\"a1\">en</span> = Utrum, <span class=\"a2\">et</span> = Neutrum.",
+  "placeholder": "en / et / at …",
+  "fold": [["æ", "ae"], ["ø", "oe"], ["å", "aa"]],
+  "toleranceHint": "æ/ø/å werden tolerant geprüft (ae/oe/aa zählt, korrekte Schreibweise wird angezeigt). Verben mit „at“.",
+  "codePrefix": "DA1:",
+  "features": {
+    "modes": ["durchgang", "karten", "quiz", "schreiben", "saetze", "liste"],
+    "firstPass": true,
+    "packSize": 50,
+    "mic": true,
+    "report": true
+  }
+}

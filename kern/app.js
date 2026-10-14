@@ -246,7 +246,9 @@ function schreiben(){
 }
 
 function saetze(){
-  const src = SAETZE.filter(s=>(topic==='alle'||topic.startsWith(s.t)) && inTime(s.d));
+  const VM = saetze.vm || (saetze.vm = Object.fromEntries(VOK.map(v=>[v.id,v])));
+  const src = SAETZE.filter(s=>(topic==='alle'||topic.startsWith(s.t)) && inTime(s.d) && (!F.firstPass || !s.v || (VM[s.v] && isSeen(VM[s.v]))));
+  if(F.firstPass && !src.length){ emptyGuard() || (main.innerHTML = `<div class="stack">${topicBar()}<div class="card" style="min-height:140px"><div class="hint">Sätze erscheinen für Wörter, die du im Erstdurchgang schon gesehen hast.</div></div></div>`); return; }
   const list = src.length ? src : SAETZE;
   if(!saQ){ const s = list[Math.random()*list.length|0]; saQ = { s, b: s.b[Math.random()*s.b.length|0], res:null, typed:'' }; }
   const q = saQ, i = q.s.es.indexOf(q.b);
