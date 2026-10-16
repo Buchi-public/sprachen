@@ -14,6 +14,15 @@ const VOK = DATA.vokabeln;
 const SAETZE = DATA.saetze;
 const TOPICS = [...new Set(VOK.map(v=>v.t))];
 const INTERVALS = F.intervals; // Tage pro Fach 1..5 (Index 1..5), je Sprache einstellbar
+// ---------- Datenschicht (zukunftssicher) ----------
+// Lernstand liegt im Format {schema,app,profile,data} unter dem Schluessel trainer:<app>:<profile>.
+// Andock-Punkte fuer spaeter (heute ungenutzt): backend.get/set -> Cloud-Adapter mit gleicher Signatur;
+// PROFILE -> Kennung fuer Mehrbenutzer-/Klassen-/Lehrer-Modus. Heute rein geraetlokal, Fortschritt privat.
+const APP = L.key, SCHEMA = 1;
+let PROFILE = 'local';
+const backend = { get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+                  set(k,v){ try{ localStorage.setItem(k,v); return true; }catch(e){ return false; } } };
+function skey(){ return 'trainer:'+APP+':'+PROFILE; }
 let state = load();
 let view = (F.modes.includes(state.view) || state.view==='einst') ? state.view : F.modes[0];
 let topic = state.topic || 'alle';
@@ -24,11 +33,15 @@ let undoK = null;
 let cur = null, flipped = false, quizQ = null, wrQ = null, saQ = null;
 
 const STORE_OK = (()=>{ try{ localStorage.setItem('__t','1'); const ok = localStorage.getItem('__t')==='1'; localStorage.removeItem('__t'); return ok; }catch(e){ return false; } })();
-function load(){ let s={}; try{ s = JSON.parse(localStorage.getItem(L.key)||'{}'); }catch(e){}
+if(STORE_OK && !backend.get(skey())) save(); // vorhandenen Lernstand einmalig ins neue Format uebernehmen
+function load(){ let s={}; const raw = backend.get(skey());
+  if(raw){ try{ const env = JSON.parse(raw); s = (env && env.data && env.schema) ? env.data : env; }catch(e){ s={}; } }
+  else { try{ s = JSON.parse(backend.get(L.key)||'{}'); }catch(e){ s={}; } } // einmalige Migration vom alten Schluessel
   // Migration: alter Lernstand war nach Listenposition gespeichert -> jetzt feste Kennung (spanisches Wort)
   if(s.p && !s.v2){ const np={}; for(const k in s.p){ const v = VOK.find(x=>String(x.o)===k); if(v) np[v.id]=s.p[k]; } s.p=np; }
   s.v2 = 1; return s; }
-function save(){ state.view=view; state.topic=topic; state.zeit=zeit; state.ab=ab; try{ localStorage.setItem(L.key, JSON.stringify(state)); }catch(e){} }
+function save(){ state.view=view; state.topic=topic; state.zeit=zeit; state.ab=ab;
+  try{ backend.set(skey(), JSON.stringify({schema:SCHEMA, app:APP, profile:PROFILE, savedAt:Date.now(), data:state})); }catch(e){} }
 // Zwei getrennte Leitner-Kästen: 'es' = Fremdsprache → Deutsch (state.p), 'de' = Deutsch → Fremdsprache (state.pd)
 function prog(id, d){ const k = d==='de' ? 'pd' : 'p'; state[k] = state[k]||{}; return state[k][id] || (state[k][id] = {b:1, due:0}); }
 function dirsActive(){ if(view==='schreiben') return ['de']; const d = state.dir||F.dirDefault; return d==='mix' ? ['es','de'] : [d]; }
