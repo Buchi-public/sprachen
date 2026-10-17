@@ -1,0 +1,103 @@
+/* VORSCHLAG „Apple-Stil" – wird NACH app.css geladen und überschreibt nur die Optik.
+   Prinzipien: Systemschrift (SF Pro am iPhone), gruppierter Hintergrund, Flächen statt Rahmen,
+   Haarlinien, segmentierte Schalter, große Titel, durchscheinende Leisten, Akzentfarbe je Sprache. */
+:root{
+  --bg:#F2F2F7; --surface:#FFFFFF; --fg:#000000; --muted:#8E8E93; --line:rgba(60,60,67,.18);
+  --fill:rgba(118,118,128,.12); --fill2:rgba(118,118,128,.08);
+  --accent:var(--tint,#FF9500); --accent-ink:#FFFFFF;
+  --ok:#34C759; --bad:#FF3B30;
+  --display:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Arial,sans-serif;
+  --body:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif;
+  --bar:rgba(249,249,249,.82);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#000000; --surface:#1C1C1E; --fg:#FFFFFF; --muted:#8E8E93; --line:rgba(84,84,88,.6);
+  --fill:rgba(118,118,128,.24); --fill2:rgba(118,118,128,.16); --ok:#30D158; --bad:#FF453A;
+  --bar:rgba(22,22,24,.82); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#000000; --surface:#1C1C1E; --fg:#FFFFFF; --muted:#8E8E93; --line:rgba(84,84,88,.6);
+  --fill:rgba(118,118,128,.24); --fill2:rgba(118,118,128,.16); --ok:#30D158; --bad:#FF453A;
+  --bar:rgba(22,22,24,.82); color-scheme:dark}
+
+body{font-family:var(--body);font-size:17px;letter-spacing:-.01em;-webkit-font-smoothing:antialiased}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Kopf: großer Titel, Zähler als Untertitel, Zahnrad als Symbol */
+header{background:var(--bar);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);
+  border-bottom:.5px solid var(--line);padding:12px 20px 10px;align-items:flex-end}
+header h1{font-family:var(--display);font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.1}
+header h1 span{color:inherit}
+#stats{font-size:13px;color:var(--muted)}
+#gear{padding:6px;border-radius:50%;color:var(--accent);background:transparent}
+#gear.on{background:var(--fill);color:var(--accent)}
+#gear svg{width:24px;height:24px;display:block}
+main{padding:16px 16px 100px}
+
+/* Tab-Leiste: durchscheinend, Liniensymbole, aktive Seite nur eingefärbt */
+nav{background:var(--bar);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);
+  border-top:.5px solid var(--line);padding:6px 4px calc(4px + env(safe-area-inset-bottom,0px))}
+nav button{font-size:10px;font-weight:500;color:var(--muted);border-radius:0;padding:4px 2px;gap:3px;letter-spacing:0}
+nav button .ico{font-size:0;line-height:0}
+nav button .ico svg{width:26px;height:26px;display:block}
+nav button.on{background:transparent;color:var(--accent)}
+
+/* Flächen statt Rahmen */
+.card{border:0;border-radius:22px;box-shadow:0 1px 2px rgba(0,0,0,.04),0 8px 28px rgba(0,0,0,.06);min-height:230px;padding:28px 20px}
+.word{font-family:var(--display);font-weight:700;letter-spacing:-.02em;font-size:clamp(28px,8vw,38px)}
+.topic{font-size:12px;font-weight:600;letter-spacing:.02em;text-transform:none;color:var(--muted)}
+.hint{font-size:14px}
+
+/* Auswahlfelder wie iOS-Listenzeilen */
+select{border:0;border-radius:12px;background:var(--surface);padding:12px 14px;font-size:17px;-webkit-appearance:none;appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+  background-position:calc(100% - 18px) 52%,calc(100% - 13px) 52%;background-size:5px 5px;background-repeat:no-repeat;padding-right:34px}
+
+/* Segmentierte Schalter (Richtung, Erinnerung …) */
+.row[role=group]{background:var(--fill);padding:2px;border-radius:10px;gap:0;flex-wrap:nowrap}
+.row[role=group] .chip{flex:1;border:0;background:transparent;border-radius:8px;padding:7px 6px;font-size:13px;font-weight:600;color:var(--fg)}
+.row[role=group] .chip.on{background:var(--surface);color:var(--fg);box-shadow:0 1px 3px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04)}
+.chip{border:0;background:var(--fill);color:var(--fg);font-weight:600}
+.chip.on{background:var(--accent);color:var(--accent-ink);border:0}
+
+/* Knöpfe: gefüllt, ohne Rahmen */
+.btn{border:0;border-radius:14px;background:var(--fill);font-weight:600;font-size:17px;padding:15px 16px;color:var(--accent)}
+.btn.primary{background:var(--accent);color:#fff}
+.btn.ok{background:var(--ok);color:#fff}
+.btn.bad{background:var(--bad);color:#fff}
+@media (prefers-reduced-motion:no-preference){.btn,.chip,.opt{transition:transform .12s,opacity .12s}.btn:active,.chip:active,.opt:active{transform:scale(.97);opacity:.85}}
+
+/* Fächer: eine gruppierte Zeile statt fünf Kästchen */
+.boxes{background:var(--surface);border-radius:14px;gap:0;padding:6px 0}
+.box{background:transparent;border:0;border-radius:0;padding:4px 2px;border-left:.5px solid var(--line)}
+.box:first-child{border-left:0}
+.box b{font-size:22px;font-weight:600}
+.box small{font-size:11px}
+.box.due b{color:var(--accent)} .box.due{box-shadow:none}
+.box.sel{box-shadow:none} .box.sel b{color:var(--accent)} .box.sel small{color:var(--accent);font-weight:600}
+
+/* Quiz-Antworten als Listenzeilen */
+.opt{border:0;border-radius:14px;background:var(--surface);font-weight:500;font-size:17px;padding:15px 16px}
+.opt.right{background:color-mix(in srgb,var(--ok) 18%,var(--surface));box-shadow:inset 0 0 0 1.5px var(--ok)}
+.opt.wrong{background:color-mix(in srgb,var(--bad) 14%,var(--surface));box-shadow:inset 0 0 0 1.5px var(--bad)}
+
+input[type=text]{border:0;border-radius:12px;background:var(--surface);padding:14px 16px;font-size:19px}
+textarea{border:0;border-radius:12px;background:var(--surface)}
+
+/* Liste: gruppierte Tabelle mit Haarlinien */
+h2{font-family:var(--display);font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:22px 4px 6px}
+table{background:var(--surface);border-radius:14px;overflow:hidden;font-size:16px}
+td{border-bottom:.5px solid var(--line);padding:11px 12px}
+tr:last-child td{border-bottom:0}
+
+.legend{font-size:13px;color:var(--muted)}
+.bar{height:6px;border-radius:3px;background:var(--fill)}
+.warn{border:0;border-radius:14px;background:color-mix(in srgb,var(--accent) 14%,var(--surface));padding:12px 14px}
+.spk{border:0;background:var(--fill);color:var(--accent)}
+.ex{border:0;background:var(--surface)}
+/* Feinschliff */
+:root{--seg:#FFFFFF}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--seg:#636366}}
+:root[data-theme="dark"]{--seg:#636366}
+.row[role=group] .chip.on{background:var(--seg)}
+#reset{color:var(--bad)}
+.stack>h2{margin:12px 4px -4px}
