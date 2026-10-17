@@ -1,6 +1,7 @@
-/* VORSCHAU „Apple-Stil" – nur in /vorschau/ eingebunden, ändert die echte App nicht.
+/* Darstellung „Clean" (Apple-Stil / Liquid Glass) – aktiv nur, wenn <html class="clean">; sonst bleibt die verspielte Optik.
    Ersetzt Emojis durch Liniensymbole, legt den Erklärtext hinter „ⓘ", setzt die Akzentfarbe je Sprache. */
 (function(){
+  if(!document.documentElement.classList.contains('clean')) return;
   const L = window.LANG || {};
   const TINT = {ES:'#FF9500', DA:'#FF3B30'};
   document.documentElement.style.setProperty('--tint', L.tint || TINT[L.code] || '#007AFF');

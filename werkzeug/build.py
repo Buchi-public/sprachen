@@ -1,7 +1,7 @@
 """Baut <sprache>/index.html aus kern/ + <sprache>/sprache.json + interner Vokabeldatei.
 Aufruf:  python3 werkzeug/build.py spanisch /pfad/zu/spanisch_daten.json
 Die Vokabeldatei (mit Quellenangaben 'src') bleibt INTERN im Claude-Projekt; ins Repo kommt nur die Seite ohne 'src'."""
-import json, sys, os, html
+import json, sys, os, html, hashlib
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 lang, datafile = sys.argv[1], sys.argv[2]
 cfg = json.load(open(os.path.join(root, lang, 'sprache.json'), encoding='utf-8'))
@@ -15,6 +15,11 @@ if colors:
                  f"@media (prefers-color-scheme:dark){{:root:not([data-theme=\"light\"]){{--a1:{colors['a1Dark']};--a2:{colors['a2Dark']}}}}}"
                  f":root[data-theme=\"dark\"]{{--a1:{colors['a1Dark']};--a2:{colors['a2Dark']}}}</style>")
 title = html.escape(cfg['title'])
+# Versionsnummer je Datei (Inhalts-Hash) -> Safari laedt nach Updates sicher die neue Fassung
+ver = lambda f: hashlib.md5(open(os.path.join(root, 'kern', f), 'rb').read()).hexdigest()[:8]
+# Darstellung: 'clean' (Apple-Stil/Liquid Glass, Standard) oder 'play' (verspielt); Wahl je Geraet unter Einstellungen
+ui_key = 'trainer:' + cfg['key'] + ':ui'
+ui_default = cfg.get('features', {}).get('uiDefault', 'clean')
 page = f'''<!doctype html><html lang="de"><head><meta charset="utf-8">
 <meta name="robots" content="noindex, nofollow, noarchive">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -27,8 +32,11 @@ page = f'''<!doctype html><html lang="de"><head><meta charset="utf-8">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;800&family=Fraunces:opsz,wght@9..144,700&display=swap">
-<link rel="stylesheet" href="../kern/app.css">
+<link rel="stylesheet" href="../kern/app.css?v={ver('app.css')}">
 {color_css}
+<link rel="stylesheet" href="../kern/apple.css?v={ver('apple.css')}" id="cleanCss">
+<script>(function(){{var u;try{{u=localStorage.getItem('{ui_key}')}}catch(e){{}}u=u||'{ui_default}';window.UI=u;
+if(u==='clean')document.documentElement.classList.add('clean');else document.getElementById('cleanCss').disabled=true}})()</script>
 <style>:root{{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}}[hidden]{{display:none!important}}</style>
 </head><body>
 <header><h1>{cfg['h1']}</h1><div class="hr"><div id="stats"></div><button id="gear" aria-label="Einstellungen">⚙️</button></div></header>
@@ -41,8 +49,9 @@ page = f'''<!doctype html><html lang="de"><head><meta charset="utf-8">
   <button data-v="saetze"><span class="ico">💬</span>Sätze</button>
   <button data-v="liste"><span class="ico">📖</span>Liste</button>
 </nav>
-<script>window.LANG={js(cfg)};window.DATA={js(data)};</script>
-<script src="../kern/app.js"></script>
+<script>window.LANG={js(cfg)};window.UI_KEY='{ui_key}';window.DATA={js(data)};</script>
+<script src="../kern/app.js?v={ver('app.js')}"></script>
+<script src="../kern/apple.js?v={ver('apple.js')}"></script>
 </body></html>
 '''
 open(os.path.join(root, lang, 'index.html'), 'w', encoding='utf-8').write(page)

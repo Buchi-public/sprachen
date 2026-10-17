@@ -410,6 +410,9 @@ function einst(){
   const every = state.remind ?? 30;
   const last = state.lastBackup ? new Date(state.lastBackup*864e5).toLocaleDateString('de-AT') : 'noch nie';
   main.innerHTML = `<div class="stack">
+    <h2>Darstellung</h2>
+    <div class="row" role="group" aria-label="Darstellung">${[['clean','Clean'],['play','Verspielt']]
+      .map(([k,l])=>`<button class="chip ${(window.UI||'play')===k?'on':''}" data-ui="${k}">${l}</button>`).join('')}</div>
     <h2>Sicherung</h2>
     <p class="legend">Speichern auf diesem Gerät: <b>${STORE_OK?'funktioniert':'nicht möglich'}</b>. Letzte Sicherung: <b>${last}</b>.<br>
       Mit dem Sicherungscode hebst du deinen Lernstand auf (z. B. in Notizen) oder überträgst ihn auf ein anderes Gerät.</p>
@@ -453,6 +456,9 @@ function einst(){
       msg.className='feedback ok'; msg.textContent='Lernstand wiederhergestellt.'; setTimeout(render, 800);
     }catch(e){ msg.className='feedback bad'; msg.textContent='Der Code ist ungültig oder unvollständig.'; }
   };
+  document.querySelectorAll('[data-ui]').forEach(b=>b.onclick=()=>{ if(b.dataset.ui===window.UI) return;
+    try{ localStorage.setItem(window.UI_KEY||('trainer:'+APP+':ui'), b.dataset.ui); }catch(e){}
+    state.lastView = state.lastView || F.modes[0]; save(); location.reload(); });
   document.querySelectorAll('[data-rem]').forEach(b=>b.onclick=()=>{ state.remind = +b.dataset.rem; save(); render(); });
   document.querySelectorAll('[data-auto]').forEach(b=>b.onclick=()=>{ state.auto = +b.dataset.auto; save(); render(); });
   document.querySelectorAll('[data-rate]').forEach(b=>b.onclick=()=>{ state.rate = +b.dataset.rate; save(); render(); });
