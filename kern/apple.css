@@ -101,3 +101,41 @@ tr:last-child td{border-bottom:0}
 .row[role=group] .chip.on{background:var(--seg)}
 #reset{color:var(--bad)}
 .stack>h2{margin:12px 4px -4px}
+
+/* ---- Runde 2: ruhigere Farben, neuer Kopf, Symbole ---- */
+.ic{width:1.15em;height:1.15em;vertical-align:-.2em;flex:none}
+/* Kopf: Titel + Zähler darunter, Zahnrad neutral */
+header{display:grid;grid-template-columns:1fr auto;grid-template-areas:"t g" "s g";align-items:center;row-gap:1px;padding:10px 20px 10px}
+header h1{grid-area:t;font-size:28px}
+header .hr{grid-area:g}
+header #stats{grid-area:s;font-size:13px;color:var(--muted)}
+#gear{color:var(--muted);padding:8px}
+#gear.on{color:var(--fg);background:var(--fill)}
+#gear svg{width:22px;height:22px}
+/* Filter als kompakte graue Menü-Kapseln statt großer weißer Felder */
+.row:has(> select){gap:8px;justify-content:flex-start}
+select{width:auto;flex:0 1 auto;max-width:62%;background-color:var(--fill);border-radius:999px;padding:7px 30px 7px 14px;font-size:15px;font-weight:500;
+  background-position:calc(100% - 16px) 52%,calc(100% - 11px) 52%}
+/* Weniger Farbe: Knöpfe neutral, Bewertung als getönte Flächen */
+.btn{color:var(--fg)}
+.btn.primary{color:#fff}
+.btn.ok{background:color-mix(in srgb,var(--ok) 16%,var(--surface));color:var(--ok)}
+.btn.bad{background:color-mix(in srgb,var(--bad) 13%,var(--surface));color:var(--bad)}
+.chip.on{background:var(--fg);color:var(--bg)}
+.row[role=group] .chip.on{color:var(--fg)}
+.box.due b,.box.sel b,.box.sel small{color:var(--fg)}
+.box.sel{background:var(--fill);border-radius:10px}
+.spk{color:var(--fg);display:inline-flex;align-items:center;gap:6px}
+.bar i{background:var(--fg);opacity:.75}
+/* „Kann ich längst" / „Zurück" als ruhige Textzeile mit Symbol */
+.chip.quiet,#undo,#undoK{background:transparent;color:var(--muted);font-weight:500;padding:6px 4px;display:inline-flex;align-items:center;gap:6px}
+#known.quiet:active,#undo:active,#undoK:active{color:var(--fg)}
+/* Erklärung hinter ⓘ */
+details.info summary{list-style:none;cursor:pointer;color:var(--muted);font-size:13px;display:inline-flex;align-items:center;gap:6px;padding:4px 2px}
+details.info summary::-webkit-details-marker{display:none}
+details.info[open] summary{color:var(--fg)}
+details.info p.legend{margin:6px 0 0}
+.warn{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;background:var(--surface)}
+#topic{flex:1 1 0;min-width:0;max-width:none}
+#zeit{flex:0 0 auto}
+p.feedback.bad{font-size:14px;font-weight:500;color:var(--muted);margin:0}
