@@ -31,6 +31,7 @@ let ab = state.ab || VOK.map(v=>v.d).sort()[0];
 let cardFront = 'es';
 let undoK = null;
 let cur = null, flipped = false, quizQ = null, wrQ = null, saQ = null;
+let free = false; // freiwilliges Weiterüben, wenn nichts fällig ist – zählt nicht für die Fächer
 
 const STORE_OK = (()=>{ try{ localStorage.setItem('__t','1'); const ok = localStorage.getItem('__t')==='1'; localStorage.removeItem('__t'); return ok; }catch(e){ return false; } })();
 if(STORE_OK && !backend.get(skey())) save(); // vorhandenen Lernstand einmalig ins neue Format uebernehmen
@@ -131,11 +132,13 @@ function pick(force){
   const ds = force ? [force] : dirsActive(), c = [];
   pool().forEach(v=>ds.forEach(d=>{ if(isDue(v,d)) c.push([v,d]); }));
   if(c.length) return c[Math.random()*c.length|0];
+  if(!free) return [null, ds[0]];   // nichts fällig -> „Alles erledigt"
   const src = pool().length ? pool() : (F.firstPass ? [] : VOK);
   if(!src.length) return [null, ds[0]];
   return [src[Math.random()*src.length|0], ds[Math.random()*ds.length|0]];
 }
 function grade(v, ok, d){
+  if(!isDue(v,d) && !fachOn()){ state.done = (state.done||0)+1; save(); return; } // freies Üben: Fächer bleiben unverändert
   const p = prog(v.id, d);
   if(ok){ p.b = Math.min(5, p.b+1); p.due = today() + INTERVALS[p.b]; }
   else { p.b = 1; p.due = today(); }
@@ -195,13 +198,31 @@ function emptyGuard(){
   return true;
 }
 function markDone(v){ state.x = state.x||{}; state.x[v.id] = today(); state.n = state.n||{}; state.n[v.id] = 1; state.done = (state.done||0)+1; save(); }
+// Nichts fällig: Abschluss-Hinweis statt Zufallswörtern; optional freiwillig weiterüben (ohne Wertung)
+function dueGuard(){
+  if(fachOn()) return false;
+  const ds = dirsActive(), any = pool().some(v=>ds.some(d=>isDue(v,d)));
+  if(any || free) return false;
+  let next = Infinity; pool().forEach(v=>ds.forEach(d=>{ next = Math.min(next, prog(v.id,d).due); }));
+  const n = next===Infinity ? '' : (next-today()===1 ? 'Nächste Wiederholung: morgen.' : `Nächste Wiederholung in ${next-today()} Tagen.`);
+  main.innerHTML = `<div class="stack">${topicBar()}${view==='schreiben'?'':dirBar()}<div class="card" style="min-height:160px"><div class="word" style="font-size:24px">Alles erledigt für heute ✓</div>
+    <div class="hint">In dieser Auswahl ist nichts fällig. ${n}</div></div>
+    <div class="row"><button class="btn" id="freeGo">Freiwillig weiterüben</button></div>
+    <p class="legend">Freiwilliges Üben zählt nicht: Die Fächer und Wiederholungstermine bleiben unverändert.</p></div>`;
+  document.getElementById('freeGo').onclick = () => { free = true; cur = quizQ = wrQ = null; render(); };
+  return true;
+}
+const freeBar = () => free && !fachOn() && !pool().some(v=>dirsActive().some(d=>isDue(v,d))) ? `<div class="row"><button class="chip quiet" id="freeX">Freies Üben – zählt nicht für die Fächer · Beenden</button></div>` : '';
+document.addEventListener('click', e => { if(e.target.closest && e.target.closest('#freeX')){ free = false; cur = quizQ = wrQ = null; render(); } });
+
 function karten(){
   if(emptyGuard()) return;
   if(fachOn() && !fachList().length){ state.fach = null; save(); }
+  if(dueGuard()) return;
   if(!cur){ [cur, cardFront] = pick(); flipped=false; }
   const p = prog(cur.id, cardFront);
   const fBar = fachOn() ? `<p class="warn" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>Nur <b>Fach ${state.fach.b}</b> · ${fachList().length} Wörter</span><button class="chip" id="fachX" style="flex:none">✕ Alle fälligen</button></p>` : '';
-  main.innerHTML = `<div class="stack">${topicBar()}${dirBar()}${boxes()}${fBar}
+  main.innerHTML = `<div class="stack">${topicBar()}${dirBar()}${boxes()}${fBar}${freeBar()}
     <button class="card" id="card">
       <div class="topic">${cur.t} · ${cardFront==='es'?L.code+' → DE':'DE → '+L.code} · Fach ${p.b}</div>
       <div class="word">${(cardFront==='es') !== flipped ? esHtml(cur.es) : cur.de}</div>
@@ -233,14 +254,14 @@ function karten(){
 }
 
 function quiz(){
-  if(emptyGuard()) return;
+  if(emptyGuard() || (!quizQ && dueGuard())) return;
   if(!quizQ){
     const [v, dir] = pick();
     const others = shuffle(VOK.filter(o=>o.id!==v.id && o.t===v.t).concat(shuffle(VOK.filter(o=>o.id!==v.id)))).slice(0,3);
     quizQ = { v, dir, opts: shuffle([v,...others]), answered:null };
   }
   const q = quizQ, ask = q.dir==='es' ? esHtml(q.v.es) : q.v.de;
-  main.innerHTML = `<div class="stack">${topicBar()}${dirBar()}
+  main.innerHTML = `<div class="stack">${topicBar()}${dirBar()}${freeBar()}
     <div class="card" style="min-height:140px"><div class="topic">${q.dir==='es'?'Was heißt das auf Deutsch?':'Wie heißt das auf '+L.name+'?'}</div><div class="word">${ask}</div>${q.dir==='es' || q.answered!==null ? spk(q.v.es) : ''}</div>
     <div class="stack" id="opts">${q.opts.map((o,i)=>{
       let cls='opt'; if(q.answered!==null){ if(o.id===q.v.id) cls+=' right'; else if(i===q.answered) cls+=' wrong'; }
@@ -253,10 +274,10 @@ function quiz(){
 }
 
 function schreiben(){
-  if(emptyGuard()) return;
+  if(emptyGuard() || (!wrQ && dueGuard())) return;
   if(!wrQ){ wrQ = { v: pick('de')[0], res:null, typed:'' }; }
   const q = wrQ;
-  main.innerHTML = `<div class="stack">${topicBar()}
+  main.innerHTML = `<div class="stack">${topicBar()}${freeBar()}
     <div class="card" style="min-height:120px"><div class="topic">Auf ${L.name}, mit Artikel</div><div class="word">${q.v.de}</div></div>
     <form id="f" class="inrow"><input type="text" id="ans" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${L.placeholder}" value="${q.typed.replace(/"/g,'&quot;')}" ${q.res?'disabled':''}>${q.res?'':micBtn('ans')}</form>
     <div class="feedback ${q.res?q.res.cls:''}">${q.res?q.res.msg:''} ${q.res?spk(q.v.es):''}</div>
