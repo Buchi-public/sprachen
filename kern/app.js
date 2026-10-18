@@ -64,15 +64,24 @@ const esc = s => String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(
 // ---------- Sprachausgabe ----------
 const TTS_LANG = L.tts || ({ES:'es-ES', DA:'da-DK'})[L.code] || '';
 const SYN = window.speechSynthesis;
-let VOICE = null;
+let VOICE = null, VOICES = [];
+// Qualitaet der Stimme: iOS/macOS verraten sie nur in voiceURI (…voice.premium… / …voice.enhanced…), nicht im Namen.
+const NOVELTY = /eloquence|Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Good News|Jester|Organ|Superstar|Trinoids|Whisper|Wobble|Zarvox|Junior|Ralph|Fred|Kathy|Eddy|Flo|Grandma|Grandpa|Reed|Rocko|Sandy|Shelley/i;
+function vQual(v){ const u = (v.voiceURI||'')+' '+v.name;
+  if(NOVELTY.test(u)) return 0;
+  if(/premium/i.test(u)) return 3;
+  if(/enhanced|erweitert|verbessert|natural|neural|google/i.test(u)) return 2;
+  return 1; }
+const vLabel = v => v.name.replace(/\s*\((enhanced|premium|erweitert|verbessert)\)/i,'') + ({3:' · Premium',2:' · Erweitert',1:'',0:' · Effektstimme'})[vQual(v)];
 function pickVoice(){
   if(!SYN || !TTS_LANG) return;
   const n = s => s.replace('_','-').toLowerCase(), all = SYN.getVoices();
   const exact = all.filter(v=>n(v.lang)===n(TTS_LANG)), same = all.filter(v=>n(v.lang).startsWith(n(TTS_LANG).slice(0,2)));
-  const c = exact.length ? exact : same;
-  VOICE = c.find(v=>/premium|enhanced|erweitert|verbessert/i.test(v.name)) || c.find(v=>v.localService) || c[0] || null;
+  VOICES = (exact.length ? exact : same).slice().sort((a,b)=>vQual(b)-vQual(a) || (b.localService-a.localService));
+  const mine = state.voice && VOICES.find(v=>v.voiceURI===state.voice);
+  VOICE = mine || VOICES[0] || null;
 }
-if(SYN){ try{ pickVoice(); SYN.addEventListener ? SYN.addEventListener('voiceschanged', pickVoice) : (SYN.onvoiceschanged = pickVoice); }catch(e){} }
+if(SYN){ try{ pickVoice(); const vch = () => { pickVoice(); if(typeof view!=='undefined' && view==='einst') render(); }; SYN.addEventListener ? SYN.addEventListener('voiceschanged', vch) : (SYN.onvoiceschanged = vch); }catch(e){} }
 const canSpeak = () => F.tts && !!SYN && !!TTS_LANG;
 function speak(t){
   if(!canSpeak() || !t) return;
@@ -423,7 +432,8 @@ function einst(){
     <div class="row" role="group" aria-label="Erinnerung">${[[0,'Aus'],[14,'alle 14 Tage'],[30,'alle 30 Tage']]
       .map(([k,l])=>`<button class="chip ${every===k?'on':''}" data-rem="${k}">${l}</button>`).join('')}</div>
     ${F.tts ? `<h2>Sprachausgabe</h2>
-    <p class="legend">${canSpeak() ? `Stimme: <b>${VOICE ? esc(VOICE.name) : 'Standard ('+TTS_LANG+')'}</b>. Bessere Stimmen: iPhone-Einstellungen → Bedienungshilfen → Gesprochene Inhalte → Stimmen → ${L.name} laden.` : 'Auf diesem Gerät nicht verfügbar.'}</p>
+    ${canSpeak() && VOICES.length > 1 ? `<div class="row"><select id="voiceSel" aria-label="Stimme" style="flex:1 1 0;min-width:0">${VOICES.map(v=>`<option value="${esc(v.voiceURI)}" ${VOICE===v?'selected':''}>${esc(vLabel(v))}</option>`).join('')}</select></div>` : ''}
+    <p class="legend">${canSpeak() ? `Stimme: <b>${VOICE ? esc(vLabel(VOICE)) : 'Standard ('+TTS_LANG+')'}</b>. Bessere Stimmen: iPhone-Einstellungen → Bedienungshilfen → Gesprochene Inhalte → Stimmen → ${L.name} → Stimme mit „Erweitert“ oder „Premium“ laden. Danach die App ganz schließen (vom App-Umschalter wegwischen) und neu öffnen.` : 'Auf diesem Gerät nicht verfügbar.'}</p>
     ${canSpeak() ? `<div class="row" role="group" aria-label="Automatisch vorlesen">${[[0,'Nur auf Tippen'],[1,'Automatisch vorlesen']].map(([k,l])=>`<button class="chip ${(autoOn()?1:0)===k?'on':''}" data-auto="${k}">${l}</button>`).join('')}</div>
     <div class="row" role="group" aria-label="Tempo">${[[0.7,'Langsam'],[0.9,'Normal'],[1.05,'Schnell']].map(([k,l])=>`<button class="chip ${(state.rate||0.9)===k?'on':''}" data-rate="${k}">${l}</button>`).join('')} ${spk(VOK[0]?VOK[0].es:'','Test')}</div>` : ''}` : ''}
     ${F.mic ? `<h2>Spracheingabe</h2><p class="legend">${micOk() ? 'Mikrofon-Knopf 🎤 in „Schreiben" und „Sätze" ist aktiv.' : 'Eigener Mikrofon-Knopf wird von diesem Browser nicht unterstützt.'} Alternative immer: ${L.name}-Tastatur hinzufügen (Einstellungen → Allgemein → Tastatur → Tastaturen) und das Mikrofon der Tastatur verwenden.</p>` : ''}
@@ -456,6 +466,7 @@ function einst(){
       msg.className='feedback ok'; msg.textContent='Lernstand wiederhergestellt.'; setTimeout(render, 800);
     }catch(e){ msg.className='feedback bad'; msg.textContent='Der Code ist ungültig oder unvollständig.'; }
   };
+  const vs = document.getElementById('voiceSel'); if(vs) vs.onchange = () => { state.voice = vs.value; save(); pickVoice(); speak(VOK[0]?VOK[0].es:''); render(); };
   document.querySelectorAll('[data-ui]').forEach(b=>b.onclick=()=>{ if(b.dataset.ui===window.UI) return;
     try{ localStorage.setItem(window.UI_KEY||('trainer:'+APP+':ui'), b.dataset.ui); }catch(e){}
     state.lastView = state.lastView || F.modes[0]; save(); location.reload(); });
