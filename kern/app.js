@@ -8,7 +8,9 @@ const F = Object.assign({modes:['karten','quiz','schreiben','saetze','liste'], i
   firstPass:false,   // Erstdurchgang „Neu": alle Wörter einmal sichten; „Kann ich" = erledigt (kommt nie wieder)
   packSize:50,       // Wörter pro Paket im Erstdurchgang
   autoSpeak:true,    // Standard: automatisch vorlesen (in ⚙️ abschaltbar)
-  report:false       // Knopf „Fehler melden" + Liste in den Einstellungen
+  report:false,      // Knopf „Fehler melden" + Liste in den Einstellungen
+  dailyRule:true,    // „Regel des Tages" (wenn Modus 'regeln' aktiv und grammatik.json vorhanden)
+  ruleOrder:'list'   // Reihenfolge der Regel des Tages: 'list' = wie in grammatik.json (z. B. Buchreihenfolge), 'mix' = gemischt
 }, L.features||{});
 const VOK = DATA.vokabeln;
 const SAETZE = DATA.saetze;
@@ -176,11 +178,94 @@ function boxes(){
 }
 
 const main = document.getElementById('main');
+// ---------- Grammatik / Regel des Tages ----------
+// Regel: {id, t (Thema), titel, merk, text (HTML), bsp:[[fremd,de]], ueb:[[frage,antwort]]}
+// Gelesene Regeln kommen wie Vokabeln ins Leitner-System (state.g = {id:{b,due}}), abgefragt mit einer Übungsfrage.
+const GRAM = (window.GRAM && window.GRAM.regeln) || [];
+const gOn = () => F.modes.includes('regeln') && GRAM.length > 0;
+let gOpen = null, gRev = null;
+function gOrder(){
+  if(F.ruleOrder!=='mix') return GRAM;
+  let h = 7; for(const ch of APP) h = (h*31 + ch.charCodeAt(0)) >>> 0;
+  const a = GRAM.slice(); for(let i=a.length-1;i>0;i--){ h = (Math.imul(h,1103515245) + 12345) >>> 0; const j = h % (i+1); [a[i],a[j]] = [a[j],a[i]]; }
+  return a;
+}
+const gSt = id => (state.g||{})[id];
+function gToday(){
+  if(!gOn() || !F.dailyRule) return null;
+  if(state.gd && state.gd.day===today()) return GRAM.find(r=>r.id===state.gd.id) || null;
+  const next = gOrder().find(r=>!gSt(r.id)); if(!next) return null;
+  state.gd = {day:today(), id:next.id, hide:0}; save(); return next;
+}
+const gDue = () => GRAM.filter(r=>{ const s = gSt(r.id); return s && s.due <= today(); });
+function gRead(r){ state.g = state.g||{}; if(!state.g[r.id]) state.g[r.id] = {b:1, due:today()+INTERVALS[1]}; save(); }
+function gGrade(r, ok){ const s = gSt(r.id); if(!s || s.due > today()) return;
+  if(ok){ s.b = Math.min(5, s.b+1); s.due = today() + INTERVALS[s.b]; } else { s.b = 1; s.due = today(); }
+  state.done = (state.done||0)+1; save(); }
+function gPickRev(){ const d = gDue(); if(!d.length) return null; const r = d[Math.random()*d.length|0]; return {id:r.id, i:Math.random()*(r.ueb||[]).length|0, shown:false}; }
+const gEx = x => x.split(' ').map(w => L.articles[w.toLowerCase()] ? `<span class="${L.articles[w.toLowerCase()]}">${w}</span>` : w).join(' ');
+function gBanner(){
+  if(!gOn() || view==='einst' || gOpen || gRev) return '';
+  const r = gToday(); if(state.gd && state.gd.hide===1) return '';
+  const due = gDue().length;
+  if(r && !gSt(r.id)) return `<div class="card gday"><div class="topic">Regel des Tages · ${esc(r.t)}</div><div class="gtitle">${esc(r.titel)}</div><div class="gmerk">${r.merk}</div>
+    <div class="row"><button class="btn primary" data-gopen="${r.id}">Lesen</button><button class="btn" id="gLater">Später</button></div></div>`;
+  if(due && view!=='regeln') return `<div class="row"><button class="chip quiet" id="gRevGo">${due} Regel${due>1?'n':''} wiederholen</button></div>`;
+  return '';
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest && e.target.closest('[data-gopen],#gLater,#gRevGo,#gBack');
+  if(!t) return;
+  if(t.dataset.gopen){ if(view!=='regeln') state.lastView = view; view = 'regeln'; gOpen = t.dataset.gopen; gRev = null; }
+  else if(t.id==='gLater'){ state.gd.hide = 1; }
+  else if(t.id==='gRevGo'){ view = 'regeln'; gOpen = null; gRev = gPickRev(); }
+  else if(t.id==='gBack'){ gOpen = null; gRev = null; }
+  save(); render(); window.scrollTo(0,0);
+});
+function regeln(){
+  if(gOpen){ const r = GRAM.find(x=>x.id===gOpen); if(r) return gDetail(r); gOpen = null; }
+  if(gRev){ const r = GRAM.find(x=>x.id===gRev.id); if(r) return gReview(r); gRev = null; }
+  const due = gDue().length, topics = [...new Set(GRAM.map(r=>r.t))], read = GRAM.filter(r=>gSt(r.id)).length;
+  main.innerHTML = `<div class="stack">
+    ${due ? `<div class="row"><button class="btn primary" id="gRevGo">${due} Regel${due>1?'n':''} wiederholen</button></div>` : ''}
+    <p class="legend">${read} von ${GRAM.length} Regeln gelesen. Gelesene Regeln kommen mit einer kurzen Übungsfrage zur Wiederholung (nach ${INTERVALS.slice(1).join(', ')} Tagen).</p>
+    ${topics.map(t=>`<h2>${esc(t)}</h2><div class="stack glist">${GRAM.filter(r=>r.t===t).map(r=>{ const s = gSt(r.id);
+      return `<button class="opt grow" data-gopen="${r.id}"><span>${esc(r.titel)}</span><span class="gmeta">${s ? 'Fach '+s.b : 'neu'}</span></button>`; }).join('')}</div>`).join('')}
+  </div>`;
+}
+function gDetail(r){
+  const isNew = !gSt(r.id);
+  main.innerHTML = `<div class="stack">
+    <div class="card gcard"><div class="topic">${esc(r.t)}</div><div class="gtitle">${esc(r.titel)}</div>
+      <div class="gmerk">${r.merk}</div><div class="gtext">${r.text||''}</div></div>
+    ${(r.bsp||[]).length ? `<h2>Beispiele</h2><div class="stack">${r.bsp.map(([x,d])=>`<div class="gbsp"><div><div class="gx">${gEx(esc(x))}</div><div class="gde">${esc(d)}</div></div>${spk(x)}</div>`).join('')}</div>` : ''}
+    ${(r.ueb||[]).length ? `<h2>Kurz testen</h2><div class="stack">${r.ueb.map(([f,a])=>`<details class="gueb"><summary>${esc(f)}</summary><div class="gx">${gEx(esc(a))} ${spk(a)}</div></details>`).join('')}</div>` : ''}
+    <div class="row">${isNew ? '<button class="btn primary" id="gDone">Gelesen ✓</button>' : ''}<button class="btn" id="gBack">Alle Regeln</button></div>
+  </div>`;
+  const d = document.getElementById('gDone'); if(d) d.onclick = () => { gRead(r); gOpen = null; if(state.gd && state.gd.id===r.id && state.lastView && state.lastView!=='regeln'){ view = state.lastView; } save(); render(); window.scrollTo(0,0); };
+}
+function gReview(r){
+  const q = gRev, it = (r.ueb||[])[q.i] || [r.titel, r.merk], s = gSt(r.id);
+  main.innerHTML = `<div class="stack">
+    <button class="card" id="gCard"><div class="topic">${esc(r.t)} · ${esc(r.titel)} · Fach ${s?s.b:1}</div>
+      <div class="word" style="font-size:26px">${esc(it[0])}</div>
+      <div class="hint">${q.shown ? gEx(esc(it[1])) : 'Tippen zum Aufdecken'}</div></button>
+    ${q.shown ? `<div class="row" style="justify-content:center">${spk(it[1],'Anhören')}</div>
+    <div class="row"><button class="btn bad" id="gNo">Nicht gewusst</button><button class="btn ok" id="gYes">Gewusst</button></div>` : ''}
+    <div class="row"><button class="chip quiet" data-gopen="${r.id}">Regel nachlesen</button><button class="chip quiet" id="gBack">Beenden</button></div>
+  </div>`;
+  document.getElementById('gCard').onclick = () => { q.shown = !q.shown; render(); };
+  const fin = ok => { gGrade(r, ok); gRev = gPickRev(); render(); };
+  const y = document.getElementById('gYes'); if(y) y.onclick = () => fin(true);
+  const n = document.getElementById('gNo'); if(n) n.onclick = () => fin(false);
+}
+
 function render(){
   header();
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on', b.dataset.v===view));
   const g = document.getElementById('gear'); if(g){ g.classList.toggle('on', view==='einst'); g.onclick = () => { view = view==='einst' ? (state.lastView||F.modes[0]) : (state.lastView=view, 'einst'); save(); render(); }; }
-  ({karten, quiz, schreiben, saetze, liste, einst, durchgang})[view]();
+  ({karten, quiz, schreiben, saetze, liste, einst, durchgang, regeln})[view]();
+  const gb = gBanner(); if(gb){ const st = main.querySelector('.stack'); if(st) st.insertAdjacentHTML('afterbegin', gb); }
   const reset = () => { cur=quizQ=wrQ=saQ=null; save(); render(); };
   document.querySelectorAll('[data-dir]').forEach(b=>b.onclick=()=>{ state.dir=b.dataset.dir; reset(); });
   const sel = document.getElementById('topic'); if(sel) sel.onchange = e => { topic=e.target.value; reset(); };
@@ -467,7 +552,7 @@ function einst(){
   const ta = document.getElementById('code'), msg = document.getElementById('cmsg');
   document.getElementById('exp').onclick = () => {
     const pack = src => { const o = {}; for(const k in (src||{})){ const e = src[k]; if(e.b>1 || e.due>0) o[k]=[e.b,e.due]; } return o; };
-    const code = L.codePrefix + btoa(unescape(encodeURIComponent(JSON.stringify(Object.assign({p:pack(state.p), q:pack(state.pd), s:state.sDone||0, d:state.done||0}, F.firstPass ? {n:Object.keys(state.n||{}), x:state.x||{}} : {})))));
+    const code = L.codePrefix + btoa(unescape(encodeURIComponent(JSON.stringify(Object.assign({p:pack(state.p), q:pack(state.pd), s:state.sDone||0, d:state.done||0}, F.firstPass ? {n:Object.keys(state.n||{}), x:state.x||{}} : {}, state.g ? {g:state.g} : {})))));
     ta.hidden = false; ta.value = code;
     state.lastBackup = today(); save();
     const done = () => { msg.className='feedback ok'; msg.textContent='Code kopiert – z. B. in Notizen einfügen.'; };
@@ -482,7 +567,7 @@ function einst(){
       const unpack = src => { const r = {}; for(const k in (src||{})) r[k] = {b:src[k][0], due:src[k][1]}; return r; };
       state.p = unpack(o.p); state.pd = unpack(o.q);
       state.sDone = o.s||0; state.done = o.d||0; state.lastBackup = today();
-      if(o.n){ state.n = {}; o.n.forEach(k=>state.n[k]=1); } if(o.x) state.x = o.x;
+      if(o.n){ state.n = {}; o.n.forEach(k=>state.n[k]=1); } if(o.x) state.x = o.x; if(o.g) state.g = o.g;
       save();
       msg.className='feedback ok'; msg.textContent='Lernstand wiederhergestellt.'; setTimeout(render, 800);
     }catch(e){ msg.className='feedback bad'; msg.textContent='Der Code ist ungültig oder unvollständig.'; }
@@ -504,6 +589,6 @@ function einst(){
 }
 
 document.querySelectorAll('nav button').forEach(b=>{ if(!F.modes.includes(b.dataset.v)) b.remove(); });
-document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{ view=b.dataset.v; cur=quizQ=wrQ=saQ=null; save(); render(); });
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{ view=b.dataset.v; cur=quizQ=wrQ=saQ=null; gOpen=gRev=null; save(); render(); });
 if(!state.firstUse){ state.firstUse = today(); save(); }
 render();

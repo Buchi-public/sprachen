@@ -15,6 +15,8 @@ if colors:
                  f"@media (prefers-color-scheme:dark){{:root:not([data-theme=\"light\"]){{--a1:{colors['a1Dark']};--a2:{colors['a2Dark']}}}}}"
                  f":root[data-theme=\"dark\"]{{--a1:{colors['a1Dark']};--a2:{colors['a2Dark']}}}</style>")
 title = html.escape(cfg['title'])
+gfile = os.path.join(root, lang, 'grammatik.json')   # optional: eigene Grammatik-Erklärungen (selbst formuliert)
+gram = json.load(open(gfile, encoding='utf-8')) if os.path.exists(gfile) else {"regeln": []}
 # Versionsnummer je Datei (Inhalts-Hash) -> Safari laedt nach Updates sicher die neue Fassung
 ver = lambda f: hashlib.md5(open(os.path.join(root, 'kern', f), 'rb').read()).hexdigest()[:8]
 # Darstellung: 'clean' (Apple-Stil/Liquid Glass, Standard) oder 'play' (verspielt); Wahl je Geraet unter Einstellungen
@@ -47,9 +49,10 @@ if(u==='clean')document.documentElement.classList.add('clean');else document.get
   <button data-v="quiz"><span class="ico">✅</span>Quiz</button>
   <button data-v="schreiben"><span class="ico">✍️</span>Schreiben</button>
   <button data-v="saetze"><span class="ico">💬</span>Sätze</button>
+  <button data-v="regeln"><span class="ico">📘</span>Regeln</button>
   <button data-v="liste"><span class="ico">📖</span>Liste</button>
 </nav>
-<script>window.LANG={js(cfg)};window.UI_KEY='{ui_key}';window.DATA={js(data)};</script>
+<script>window.LANG={js(cfg)};window.UI_KEY='{ui_key}';window.DATA={js(data)};window.GRAM={js(gram)};</script>
 <script src="../kern/app.js?v={ver('app.js')}"></script>
 <script src="../kern/apple.js?v={ver('apple.js')}"></script>
 </body></html>
@@ -60,4 +63,4 @@ json.dump({"name": cfg['title'] + " – Vokabeltrainer", "short_name": cfg['titl
            "icons": [{"src": "icon-512.png", "sizes": "512x512", "type": "image/png"},
                      {"src": "icon-180.png", "sizes": "180x180", "type": "image/png"}]},
           open(os.path.join(root, lang, 'manifest.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-print('gebaut:', lang, len(data['vokabeln']), 'Vokabeln,', len(data['saetze']), 'Sätze')
+print('gebaut:', lang, len(data['vokabeln']), 'Vokabeln,', len(data['saetze']), 'Sätze,', len(gram['regeln']), 'Regeln')

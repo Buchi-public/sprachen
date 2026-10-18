@@ -75,3 +75,28 @@ header .hr{display:flex;align-items:center;gap:6px}
 .ex{font-size:15px;line-height:1.45;padding:10px 12px;border-radius:12px;background:var(--surface);border:1px dashed var(--line)}
 button.box{font:inherit;color:inherit;cursor:pointer}
 .box.sel{border-color:var(--fg);box-shadow:inset 0 0 0 2px var(--fg)}
+
+/* Grammatik / Regel des Tages */
+.gday{text-align:left;cursor:default}
+.gtitle{font-size:20px;font-weight:700;margin:4px 0 6px;line-height:1.25}
+.gmerk{font-weight:600;line-height:1.4}
+.gcard{text-align:left;cursor:default}
+.gtext{margin-top:10px;line-height:1.45}
+.gtext p{margin:.5em 0}
+.gtext table{border-collapse:collapse;width:100%;margin:.6em 0;font-size:15px}
+.gtext th,.gtext td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+.gtext th{color:var(--muted);font-weight:600}
+.gbsp{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-radius:14px;background:var(--surface)}
+.gx{font-weight:600}
+.gde{color:var(--muted);font-size:15px}
+.gueb{padding:10px 14px;border-radius:14px;background:var(--surface)}
+.gueb summary{cursor:pointer}
+.gueb .gx{margin-top:6px;display:flex;align-items:center;gap:10px}
+.opt.grow{display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left}
+.gmeta{color:var(--muted);font-size:13px;white-space:nowrap}
+.card.gcard,.card.gday{text-align:left}
+.card.gday .row{justify-content:flex-start}
+.gtext table td,.gtext table th{color:inherit;font-size:15px;background:none}
+.gtext table th{color:var(--muted)}
+.card.gcard .topic,.card.gday .topic,.card.gcard .gtitle,.card.gday .gtitle,.card.gcard .gtext p{text-align:left}
+.card.gcard,.card.gday{align-items:stretch;min-height:0;justify-content:flex-start}
