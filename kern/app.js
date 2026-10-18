@@ -122,7 +122,7 @@ function bindMic(after){
 // ---------- Fehler melden ----------
 const repBtn = v => F.report ? `<button type="button" class="chip ${state.flag&&state.flag[v.id]?'on':''}" data-flag="${esc(v.id)}">⚑ ${state.flag&&state.flag[v.id]?'Gemeldet':'Fehler melden'}</button>` : '';
 document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-flag]'); if(b){ state.flag = state.flag||{}; const id=b.dataset.flag; if(state.flag[id]) delete state.flag[id]; else state.flag[id]=1; save(); render(); } });
-const exHtml = v => (v.f ? `<div class="legend" style="text-align:center">Formen: <b>${v.f}</b></div>` : '') + (v.ex ? `<div class="ex">${v.ex}${v.exde?`<br><span class="mini" style="font-size:13px">${v.exde}</span>`:''} ${spk(v.ex)}</div>` : '');
+const exHtml = v => (v.f ? `<div class="legend" style="text-align:center">Formen: <b>${v.f}</b></div>` : '') + (v.ex ? `<div class="ex" data-say="${esc(v.ex)}" style="cursor:pointer">${v.ex}${v.exde?`<br><span class="mini" style="font-size:13px">${v.exde}</span>`:''} ${spk(v.ex)}</div>` : '');
 // Gezielt ein Fach üben (Karten): state.fach = {d, b}
 function fachOn(){ return view==='karten' && state.fach && dirsActive().includes(state.fach.d); }
 function fachList(){ return pool().filter(v=>prog(v.id,state.fach.d).b===state.fach.b); }
@@ -238,7 +238,7 @@ function gDetail(r){
   main.innerHTML = `<div class="stack">
     <div class="card gcard"><div class="topic">${esc(r.t)}</div><div class="gtitle">${esc(r.titel)}</div>
       <div class="gmerk">${r.merk}</div><div class="gtext">${r.text||''}</div></div>
-    ${(r.bsp||[]).length ? `<h2>Beispiele</h2><div class="stack">${r.bsp.map(([x,d])=>`<div class="gbsp"><div><div class="gx">${gEx(esc(x))}</div><div class="gde">${esc(d)}</div></div>${spk(x)}</div>`).join('')}</div>` : ''}
+    ${(r.bsp||[]).length ? `<h2>Beispiele</h2><div class="stack">${r.bsp.map(([x,d])=>`<div class="gbsp" data-say="${esc(x)}" style="cursor:pointer"><div><div class="gx">${gEx(esc(x))}</div><div class="gde">${esc(d)}</div></div>${spk(x)}</div>`).join('')}</div>` : ''}
     ${(r.ueb||[]).length ? `<h2>Kurz testen</h2><div class="stack">${r.ueb.map(([f,a])=>`<details class="gueb"><summary>${esc(f)}</summary><div class="gx">${gEx(esc(a))} ${spk(a)}</div></details>`).join('')}</div>` : ''}
     <div class="row">${isNew ? '<button class="btn primary" id="gDone">Gelesen ✓</button>' : ''}<button class="btn" id="gBack">Alle Regeln</button></div>
   </div>`;
@@ -538,8 +538,9 @@ function einst(){
     <div class="row" role="group" aria-label="Erinnerung">${[[0,'Aus'],[14,'alle 14 Tage'],[30,'alle 30 Tage']]
       .map(([k,l])=>`<button class="chip ${every===k?'on':''}" data-rem="${k}">${l}</button>`).join('')}</div>
     ${F.tts ? `<h2>Sprachausgabe</h2>
-    ${canSpeak() && VOICES.length > 1 ? `<div class="row"><select id="voiceSel" aria-label="Stimme" style="flex:1 1 0;min-width:0">${VOICES.map(v=>`<option value="${esc(v.voiceURI)}" ${VOICE===v?'selected':''}>${esc(vLabel(v))}</option>`).join('')}</select></div>` : ''}
+    ${canSpeak() && VOICES.length ? `<div class="row"><select id="voiceSel" aria-label="Stimme" style="flex:1 1 0;min-width:0">${VOICES.map(v=>`<option value="${esc(v.voiceURI)}" ${VOICE===v?'selected':''}>${esc(vLabel(v))}</option>`).join('')}</select></div>` : ''}
     <p class="legend">${canSpeak() ? `Stimme: <b>${VOICE ? esc(vLabel(VOICE)) : 'Standard ('+TTS_LANG+')'}</b>. Bessere Stimmen: iPhone-Einstellungen → Bedienungshilfen → Gesprochene Inhalte → Stimmen → ${L.name} → Stimme mit „Erweitert“ oder „Premium“ laden. Danach die App ganz schließen (vom App-Umschalter wegwischen) und neu öffnen.` : 'Auf diesem Gerät nicht verfügbar.'}</p>
+    ${canSpeak() ? `<p class="legend" style="font-size:12px">Technik: ${VOICES.length} ${esc(L.name)}-Stimme(n) vom Browser gemeldet${VOICE ? ' · '+esc(VOICE.voiceURI||'') : ''}</p>` : ''}
     ${canSpeak() ? `<div class="row" role="group" aria-label="Automatisch vorlesen">${[[0,'Nur auf Tippen'],[1,'Automatisch vorlesen']].map(([k,l])=>`<button class="chip ${(autoOn()?1:0)===k?'on':''}" data-auto="${k}">${l}</button>`).join('')}</div>
     <div class="row" role="group" aria-label="Tempo">${[[0.7,'Langsam'],[0.9,'Normal'],[1.05,'Schnell']].map(([k,l])=>`<button class="chip ${(state.rate||0.9)===k?'on':''}" data-rate="${k}">${l}</button>`).join('')} ${spk(VOK[0]?VOK[0].es:'','Test')}</div>` : ''}` : ''}
     ${F.mic ? `<h2>Spracheingabe</h2><p class="legend">${micOk() ? 'Mikrofon-Knopf 🎤 in „Schreiben" und „Sätze" ist aktiv.' : 'Eigener Mikrofon-Knopf wird von diesem Browser nicht unterstützt.'} Alternative immer: ${L.name}-Tastatur hinzufügen (Einstellungen → Allgemein → Tastatur → Tastaturen) und das Mikrofon der Tastatur verwenden.</p>` : ''}
